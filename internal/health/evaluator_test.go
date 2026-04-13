@@ -31,6 +31,9 @@ func TestHealthySeagateDrive(t *testing.T) {
 	if len(result.Reasons) != 0 {
 		t.Errorf("expected no reasons, got %v", result.Reasons)
 	}
+	if len(result.Guidance) != 0 {
+		t.Errorf("expected no guidance, got %v", result.Guidance)
+	}
 
 	// Verify parser extracted correct values
 	if sample.ReallocatedSectors == nil || *sample.ReallocatedSectors != 0 {
@@ -69,10 +72,11 @@ func TestReallocatedSectorsNonzero(t *testing.T) {
 	ev := NewEvaluator(DefaultRules())
 	result := ev.Evaluate(sample)
 
-	if result.Status != StatusRed {
-		t.Errorf("expected RED, got %s", result.Status)
+	if result.Status != StatusYellow {
+		t.Errorf("expected YELLOW, got %s", result.Status)
 	}
 	assertContains(t, result.Reasons, "REALLOCATED_SECTORS_NONZERO")
+	assertContains(t, result.Guidance, "Back up important data and plan drive replacement; reallocated sectors usually indicate media damage.")
 }
 
 func TestPendingSectorsNonzero(t *testing.T) {
@@ -201,6 +205,7 @@ func TestInsufficientData(t *testing.T) {
 	if result.Status != StatusUnknown {
 		t.Errorf("expected UNKNOWN, got %s", result.Status)
 	}
+	assertContains(t, result.Guidance, "Collect another SMART sample to confirm health; the current sample is incomplete.")
 }
 
 func TestLargeRawReadErrorRateIgnored(t *testing.T) {

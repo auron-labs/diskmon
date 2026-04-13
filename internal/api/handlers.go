@@ -59,7 +59,7 @@ func (h *Handlers) GetDrive(w http.ResponseWriter, r *http.Request) {
 		renderError(w, r, http.StatusNotFound, "drive not found")
 		return
 	}
-	render.JSON(w, r, item)
+	render.JSON(w, r, augmentDriveResponse(item))
 }
 
 func (h *Handlers) DriveHistory(w http.ResponseWriter, r *http.Request) {

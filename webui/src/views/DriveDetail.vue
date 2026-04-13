@@ -26,6 +26,7 @@ const totalTestPages = computed(() => {
 })
 
 const type = computed(() => detail.value ? driveType(detail.value.device) : '')
+const healthGuidance = computed(() => Array.isArray(detail.value?.health_guidance) ? detail.value.health_guidance : [])
 
 function formatDate(d) {
   if (!d) return 'n/a'
@@ -152,14 +153,23 @@ onMounted(async () => {
         </article>
       </div>
 
-      <!-- Health reasons if any -->
+      <!-- Actionable health guidance if any -->
       <div
-        v-if="detail.health_reasons"
+        v-if="healthGuidance.length || detail.health_reasons"
         class="rise rounded-xl border border-danger/20 bg-danger/5 p-4"
         style="animation-delay: 120ms;"
       >
-        <p class="mono text-2xs uppercase tracking-wider text-danger/70 mb-2">Health Issues</p>
-        <p class="text-sm text-danger/90">{{ detail.health_reasons }}</p>
+        <p class="mono text-2xs uppercase tracking-wider text-danger/70 mb-2">
+          {{ healthGuidance.length ? 'Recommended Actions' : 'Health Issues' }}
+        </p>
+        <ul v-if="healthGuidance.length" class="space-y-2">
+          <li
+            v-for="item in healthGuidance"
+            :key="item"
+            class="text-sm text-danger/90"
+          >{{ item }}</li>
+        </ul>
+        <p v-else class="text-sm text-danger/90">{{ detail.health_reasons }}</p>
       </div>
 
       <HistoryChart :points="history" class="rise" style="animation-delay: 160ms;" />
