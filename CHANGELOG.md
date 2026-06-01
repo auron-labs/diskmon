@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/aaronflorey/diskmon/compare/v0.3.0...v0.4.0) (2026-03-24)
+
+
+### Features
+
+* **notification:** add notify-based provider builders and transition-aware dispatcher ([c177e91](https://github.com/aaronflorey/diskmon/commit/c177e91d43ad36bddbf606a483500d1ec3421fc5))
+
+
+### Bug Fixes
+
+* improve notification hot-path efficiency and reduce duplication ([23a4e93](https://github.com/aaronflorey/diskmon/commit/23a4e93b3608ed4ef881355d8572fa0b348f0c96))
+
 ## [0.3.0](https://github.com/aaronflorey/diskmon/compare/v0.2.0...v0.3.0) (2026-03-19)
 
 
