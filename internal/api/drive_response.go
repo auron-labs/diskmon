@@ -55,6 +55,10 @@ func extractHealthReasons(value any) []string {
 }
 
 func asJSONMap(v any) (map[string]any, bool) {
+	if payload, ok := v.(map[string]any); ok {
+		return payload, true
+	}
+
 	data, err := json.Marshal(v)
 	if err != nil {
 		return nil, false

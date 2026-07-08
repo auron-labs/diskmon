@@ -92,16 +92,23 @@ func (d *DuckDB) InsertSmartTestRun(ctx context.Context, info smart.DriveInfo, r
 }
 
 func upsertDrive(ctx context.Context, tx *sql.Tx, info smart.DriveInfo, seenAt time.Time) (int64, error) {
+	identityKey := driveIdentityKey(info)
+	if identityKey == "" {
+		return 0, fmt.Errorf("derive drive identity key: empty identity for device %q", info.Device)
+	}
+
 	var driveID int64
-	err := tx.QueryRowContext(ctx, `SELECT id FROM drives WHERE device = ?`, info.Device).Scan(&driveID)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM drives WHERE identity_key = ?`, identityKey).Scan(&driveID)
 	if err == nil {
 		_, err = tx.ExecContext(ctx,
 			`UPDATE drives SET
+				device = ?,
 				model = CASE WHEN ? <> '' THEN ? ELSE model END,
 				serial = CASE WHEN ? <> '' THEN ? ELSE serial END,
 				wwn = CASE WHEN ? <> '' THEN ? ELSE wwn END,
 				last_seen_at = ?
 			WHERE id = ?`,
+			info.Device,
 			info.Model, info.Model,
 			info.Serial, info.Serial,
 			info.WWN, info.WWN,
@@ -117,8 +124,8 @@ func upsertDrive(ctx context.Context, tx *sql.Tx, info smart.DriveInfo, seenAt t
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO drives (id, device, model, serial, wwn, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		driveID, info.Device, info.Model, info.Serial, info.WWN, seenAt, seenAt); err != nil {
+		`INSERT INTO drives (id, device, identity_key, model, serial, wwn, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		driveID, info.Device, identityKey, info.Model, info.Serial, info.WWN, seenAt, seenAt); err != nil {
 		return 0, err
 	}
 

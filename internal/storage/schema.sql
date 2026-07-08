@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS drives (
     id BIGINT PRIMARY KEY,
-    device TEXT NOT NULL UNIQUE,
+    device TEXT NOT NULL,
+    identity_key TEXT NOT NULL CHECK (identity_key <> ''),
     model TEXT,
     serial TEXT,
     wwn TEXT,
@@ -20,8 +21,7 @@ CREATE TABLE IF NOT EXISTS smart_samples (
     pending_sectors BIGINT,
     uncorrectable_sectors BIGINT,
     wear_level BIGINT,
-    raw_json JSON,
-    FOREIGN KEY (drive_id) REFERENCES drives(id)
+    raw_json JSON
 );
 
 CREATE SEQUENCE IF NOT EXISTS seq_samples START 1;
@@ -43,7 +43,6 @@ CREATE TABLE IF NOT EXISTS drive_health (
     status TEXT NOT NULL,
     score INTEGER NOT NULL,
     reasons TEXT,
-    FOREIGN KEY (drive_id) REFERENCES drives(id),
     FOREIGN KEY (sample_id) REFERENCES smart_samples(id)
 );
 
@@ -55,8 +54,7 @@ CREATE TABLE IF NOT EXISTS smart_test_runs (
     started_at TIMESTAMP NOT NULL,
     finished_at TIMESTAMP NOT NULL,
     status TEXT NOT NULL,
-    message TEXT,
-    FOREIGN KEY (drive_id) REFERENCES drives(id)
+    message TEXT
 );
 
 CREATE SEQUENCE IF NOT EXISTS seq_smart_test_runs START 1;
@@ -66,6 +64,5 @@ CREATE TABLE IF NOT EXISTS notification_state (
     notification_name TEXT NOT NULL,
     state TEXT NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    PRIMARY KEY (drive_id, notification_name),
-    FOREIGN KEY (drive_id) REFERENCES drives(id)
+    PRIMARY KEY (drive_id, notification_name)
 );

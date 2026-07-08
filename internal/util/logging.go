@@ -2,26 +2,39 @@ package util
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
 )
 
-func NewLogger(level string) (*slog.Logger, error) {
-	var lv slog.Level
+func ParseLogLevel(level string) (slog.Level, error) {
 	switch strings.ToUpper(level) {
 	case "DEBUG":
-		lv = slog.LevelDebug
+		return slog.LevelDebug, nil
 	case "INFO":
-		lv = slog.LevelInfo
+		return slog.LevelInfo, nil
 	case "WARN":
-		lv = slog.LevelWarn
+		return slog.LevelWarn, nil
 	case "ERROR":
-		lv = slog.LevelError
+		return slog.LevelError, nil
 	default:
-		return nil, fmt.Errorf("unsupported log level: %s", level)
+		return 0, fmt.Errorf("unsupported log level: %s", level)
+	}
+}
+
+func NewLogger(level string) (*slog.Logger, *slog.LevelVar, error) {
+	return newLogger(level, os.Stdout)
+}
+
+func newLogger(level string, w io.Writer) (*slog.Logger, *slog.LevelVar, error) {
+	lv, err := ParseLogLevel(level)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lv})
-	return slog.New(h), nil
+	levelVar := &slog.LevelVar{}
+	levelVar.Set(lv)
+	h := slog.NewTextHandler(w, &slog.HandlerOptions{Level: levelVar})
+	return slog.New(h), levelVar, nil
 }

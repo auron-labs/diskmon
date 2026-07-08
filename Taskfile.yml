@@ -1,0 +1,143 @@
+version: '3'
+
+silent: true
+
+vars:
+  APP: diskmon
+  CMD: ./cmd/diskmon
+  BUILD_DIR: build
+  WEBUI_STAMP: web/dist/.build-stamp
+  LINUX_AMD64_CC: '{{env "LINUX_AMD64_CC" | default "x86_64-unknown-linux-gnu-gcc"}}'
+  LINUX_AMD64_CXX: '{{env "LINUX_AMD64_CXX" | default "x86_64-unknown-linux-gnu-g++"}}'
+  LINUX_ARM64_CC: '{{env "LINUX_ARM64_CC" | default "aarch64-unknown-linux-gnu-gcc"}}'
+  LINUX_ARM64_CXX: '{{env "LINUX_ARM64_CXX" | default "aarch64-unknown-linux-gnu-g++"}}'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  deps-check:
+    internal: true
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+
+  fmt:
+    desc: Run gofmt over all Go files
+    cmds:
+      - gofmt -w $(rg --files -g '*.go')
+
+  test:
+    desc: Run go test ./...
+    deps:
+      - build-webui
+    cmds:
+      - go test ./...
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}} {{.WEBUI_STAMP}}
+
+  build-webui:
+    desc: Build the web UI
+    sources:
+      - webui/src/**/*
+      - webui/index.html
+      - webui/package.json
+      - webui/bun.lock
+      - webui/vite.config.js
+      - webui/tailwind.config.js
+      - webui/postcss.config.js
+    generates:
+      - '{{.WEBUI_STAMP}}'
+    cmds:
+      - echo "Building WebUI..."
+      - cd ./webui && bun run build
+      - mkdir -p web/dist
+      - touch {{.WEBUI_STAMP}}
+
+  build-mac:
+    desc: Build native macOS binary for host arch
+    deps:
+      - deps-check
+      - build-webui
+    cmds:
+      - echo "Building macOS binary for host arch..."
+      - CGO_ENABLED=1 GOOS=darwin GOARCH=$(go env GOARCH) go build -o {{.BUILD_DIR}}/{{.APP}}-darwin-$(go env GOARCH) {{.CMD}}
+
+  build-mac-amd64:
+    desc: Build macOS amd64 binary with CGO
+    deps:
+      - deps-check
+      - build-webui
+    cmds:
+      - echo "Building macOS amd64 binary..."
+      - CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.APP}}-darwin-amd64 {{.CMD}}
+
+  build-mac-arm64:
+    desc: Build macOS arm64 binary with CGO
+    deps:
+      - deps-check
+      - build-webui
+    cmds:
+      - echo "Building macOS arm64 binary..."
+      - CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o {{.BUILD_DIR}}/{{.APP}}-darwin-arm64 {{.CMD}}
+
+  build-linux-amd64:
+    desc: Build Linux amd64 binary with CGO + GNU/glibc cross-compiler
+    deps:
+      - deps-check
+      - build-webui
+    cmds:
+      - >-
+        command -v {{.LINUX_AMD64_CC}} >/dev/null ||
+        (echo "Missing {{.LINUX_AMD64_CC}}. Install: brew tap messense/macos-cross-toolchains && brew install x86_64-unknown-linux-gnu" && exit 1)
+      - >-
+        command -v {{.LINUX_AMD64_CXX}} >/dev/null ||
+        (echo "Missing {{.LINUX_AMD64_CXX}}. Install: brew tap messense/macos-cross-toolchains && brew install x86_64-unknown-linux-gnu" && exit 1)
+      - echo "Building Linux amd64 binary..."
+      - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC={{.LINUX_AMD64_CC}} CXX={{.LINUX_AMD64_CXX}} go build -o {{.BUILD_DIR}}/{{.APP}}-linux-amd64 {{.CMD}}
+
+  build-linux-arm64:
+    desc: Build Linux arm64 binary with CGO + GNU/glibc cross-compiler
+    deps:
+      - deps-check
+      - build-webui
+    cmds:
+      - >-
+        command -v {{.LINUX_ARM64_CC}} >/dev/null ||
+        (echo "Missing {{.LINUX_ARM64_CC}}. Install: brew tap messense/macos-cross-toolchains && brew install aarch64-unknown-linux-gnu" && exit 1)
+      - >-
+        command -v {{.LINUX_ARM64_CXX}} >/dev/null ||
+        (echo "Missing {{.LINUX_ARM64_CXX}}. Install: brew tap messense/macos-cross-toolchains && brew install aarch64-unknown-linux-gnu" && exit 1)
+      - echo "Building Linux arm64 binary..."
+      - CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC={{.LINUX_ARM64_CC}} CXX={{.LINUX_ARM64_CXX}} go build -o {{.BUILD_DIR}}/{{.APP}}-linux-arm64 {{.CMD}}
+
+  build-linux-amd64-nocgo:
+    desc: Build Linux amd64 binary without CGO (DuckDB disabled at runtime)
+    deps:
+      - deps-check
+      - build-webui
+    cmds:
+      - echo "Building Linux amd64 binary without CGO..."
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.APP}}-linux-amd64-nocgo {{.CMD}}
+
+  build-linux-arm64-nocgo:
+    desc: Build Linux arm64 binary without CGO (DuckDB disabled at runtime)
+    deps:
+      - deps-check
+      - build-webui
+    cmds:
+      - echo "Building Linux arm64 binary without CGO..."
+      - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o {{.BUILD_DIR}}/{{.APP}}-linux-arm64-nocgo {{.CMD}}
+
+  build-all:
+    desc: Build webui once, then macOS + Linux binaries
+    deps:
+      - build-mac
+      - build-linux-amd64
+      - build-linux-arm64
+    cmds:
+      - echo "Built all binaries in {{.BUILD_DIR}}/"

@@ -110,8 +110,8 @@ Cron values use standard 5-field format (`minute hour day-of-month month day-of-
 ### Backend
 
 ```bash
-make test
-make build-mac
+task test
+task build-mac
 ```
 
 ### Frontend

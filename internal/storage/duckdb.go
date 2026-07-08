@@ -24,9 +24,28 @@ func OpenDuckDB(path string) (*DuckDB, error) {
 		return nil, err
 	}
 
-	if _, err := db.Exec(schemaSQL); err != nil {
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("apply schema: %w", err)
+		return nil, err
+	}
+	defer conn.Close()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := migrateDuckDB(ctx, tx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate duckdb: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("commit duckdb migration: %w", err)
 	}
 
 	return &DuckDB{db: db}, nil

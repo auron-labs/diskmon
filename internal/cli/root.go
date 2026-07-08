@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"diskmon/internal/config"
+	"diskmon/internal/util"
 
 	"github.com/spf13/cobra"
 )
 
-func NewRootCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func NewRootCmd(cfg *config.Config, logger *slog.Logger, levelVar *slog.LevelVar) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diskmon",
 		Short: "Disk health monitoring daemon and CLI",
@@ -21,8 +22,16 @@ func NewRootCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 			config.ApplyFlagOverrides(loaded, cmd.Flags())
 			loaded.Drives = normalizeDrives(loaded.Drives)
+			level, err := util.ParseLogLevel(loaded.LogLevel)
+			if err != nil {
+				return err
+			}
+			loaded.LogLevel = strings.ToUpper(loaded.LogLevel)
 			if err := loaded.Validate(); err != nil {
 				return err
+			}
+			if levelVar != nil {
+				levelVar.Set(level)
 			}
 			*cfg = *loaded
 			logger.Debug("config loaded", "database", cfg.Database, "listen", cfg.WebListen, "drives", len(cfg.Drives))

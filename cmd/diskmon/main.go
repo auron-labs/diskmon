@@ -16,13 +16,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger, err := util.NewLogger(cfg.LogLevel)
+	logger, levelVar, err := util.NewLogger(cfg.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "logger error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := cli.NewRootCmd(cfg, logger).Execute(); err != nil {
+	if err := cli.NewRootCmd(cfg, logger, levelVar).Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
