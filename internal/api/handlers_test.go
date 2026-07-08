@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -181,6 +182,28 @@ func TestListDrivesStorageFailure(t *testing.T) {
 	}
 	if strings.Contains(logOutput, "duckdb open /private/path token=secret failed") {
 		t.Fatalf("logs leaked raw error: %q", logOutput)
+	}
+}
+
+func TestListDrivesStorageFailureNilLogger(t *testing.T) {
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() { slog.SetDefault(oldDefault) })
+
+	h := &Handlers{db: fakeHandlerStore{listDrivesErr: sentinelError{}}}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/drives", nil)
+	rec := httptest.NewRecorder()
+
+	h.ListDrives(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"error":"internal server error"`) {
+		t.Fatalf("expected sanitized internal error, got %q", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "duckdb open /private/path token=secret failed") {
+		t.Fatalf("response leaked raw error: %q", rec.Body.String())
 	}
 }
 

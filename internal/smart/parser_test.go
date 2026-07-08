@@ -70,10 +70,10 @@ func TestParseSmartJSONAttributeRawFallback(t *testing.T) {
 		"ata_smart_attributes": map[string]any{
 			"table": []any{
 				map[string]any{
-					"id":    5,
-					"name":  "Reallocated_Sector_Ct",
-					"value": 100,
-					"worst": 100,
+					"id":     5,
+					"name":   "Reallocated_Sector_Ct",
+					"value":  100,
+					"worst":  100,
 					"thresh": 36,
 					"raw": map[string]any{
 						"value":  42,
@@ -102,4 +102,3 @@ func TestParseSmartJSONAttributeRawFallback(t *testing.T) {
 		t.Fatalf("expected reallocated sectors 42, got %v", sample.ReallocatedSectors)
 	}
 }
-

@@ -234,4 +234,3 @@ func TestRunSelfTestNormalizesType(t *testing.T) {
 		t.Fatalf("expected normalized short output, got %q", msg)
 	}
 }
-

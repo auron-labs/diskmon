@@ -175,8 +175,13 @@ func runCollectionCycle(
 			continue
 		}
 
-		driveID, ok := driveIDByDevice[res.Info.Device]
-		if !ok {
+		driveID, refreshedMap, err := resolveDriveIDForNotifications(ctx, db, driveIDByDevice, res.Info.Device)
+		if err != nil {
+			logger.Error("failed refreshing drive map for notifications", "device", res.Info.Device, "error", err)
+			continue
+		}
+		driveIDByDevice = refreshedMap
+		if driveID == 0 {
 			logger.Error("drive not found for notifications", "device", res.Info.Device)
 			continue
 		}
@@ -207,12 +212,28 @@ func runCollectionCycle(
 			}
 
 			for _, outcome := range dispatchResult.Outcomes {
+				if outcome.Attempted && !outcome.Sent {
+					continue
+				}
 				if err := db.UpsertNotificationState(ctx, driveID, outcome.Name, string(healthResult.Status), updatedAt); err != nil {
 					logger.Error("failed persisting notification dedupe state", "device", res.Info.Device, "notification", outcome.Name, "error", err)
 				}
 			}
 		}
 	}
+}
+
+func resolveDriveIDForNotifications(ctx context.Context, db daemonStorage, driveIDByDevice map[string]int64, device string) (int64, map[string]int64, error) {
+	if driveID, ok := driveIDByDevice[device]; ok {
+		return driveID, driveIDByDevice, nil
+	}
+
+	refreshedMap, err := buildDriveIDMap(ctx, db)
+	if err != nil {
+		return 0, driveIDByDevice, err
+	}
+
+	return refreshedMap[device], refreshedMap, nil
 }
 
 func buildDriveIDMap(ctx context.Context, db daemonStorage) (map[string]int64, error) {

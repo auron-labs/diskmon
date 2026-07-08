@@ -66,4 +66,3 @@ func TestWriteSSEEvent(t *testing.T) {
 		t.Fatalf("missing JSON payload device: %q", body)
 	}
 }
-

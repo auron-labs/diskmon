@@ -216,8 +216,8 @@ func TestDispatchIfNeeded_SendFailureIsolatedPerEntry(t *testing.T) {
 	if len(res.Outcomes) != 2 {
 		t.Fatalf("expected 2 outcomes, got %d", len(res.Outcomes))
 	}
-	if res.Outcomes[0].Err == nil {
-		t.Fatalf("expected first outcome error, got %+v", res.Outcomes[0])
+	if !res.Outcomes[0].Attempted || res.Outcomes[0].Sent || res.Outcomes[0].Err == nil {
+		t.Fatalf("expected failed outcome contract Attempted=true Sent=false Err!=nil, got %+v", res.Outcomes[0])
 	}
 	if !res.Outcomes[1].Sent {
 		t.Fatalf("expected second outcome success, got %+v", res.Outcomes[1])

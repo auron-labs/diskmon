@@ -44,6 +44,13 @@ func NewHandlers(logger *slog.Logger, db *storage.DuckDB, events *EventBroker) *
 	return &Handlers{logger: logger, db: store, events: events}
 }
 
+func (h *Handlers) safeLogger() *slog.Logger {
+	if h == nil || h.logger == nil {
+		return slog.Default()
+	}
+	return h.logger
+}
+
 func (h *Handlers) Healthz(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, HealthResponse{Status: "ok"})
 }
@@ -243,7 +250,7 @@ func (h *Handlers) renderInternalError(w http.ResponseWriter, r *http.Request, e
 		fields = append(fields, attr)
 	}
 
-	h.logger.Error("internal request failure", fields...)
+	h.safeLogger().Error("internal request failure", fields...)
 	renderError(w, r, status, "internal server error")
 }
 

@@ -28,6 +28,21 @@ tasks:
     cmds:
       - gofmt -w $(rg --files -g '*.go')
 
+  fmt-check:
+    desc: Check Go formatting without modifying files
+    cmds:
+      - test -z "$(gofmt -l $(git ls-files '*.go'))"
+
+  vet:
+    desc: Run go vet ./...
+    cmds:
+      - go vet ./...
+
+  audit-webui:
+    desc: Audit webui dependencies
+    cmds:
+      - bun audit --cwd webui
+
   test:
     desc: Run go test ./...
     deps:
