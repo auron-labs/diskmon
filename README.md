@@ -2,9 +2,9 @@
 
 `diskmon` is a disk health monitoring daemon and CLI for SMART data collection with an embedded web UI.
 
-[![License](https://img.shields.io/github/license/aaronflorey/diskmon?style=flat-square)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/aaronflorey/diskmon/test.yml?branch=main&label=ci&style=flat-square)](https://github.com/aaronflorey/diskmon/actions/workflows/test.yml)
-[![Latest Release](https://img.shields.io/github/v/release/aaronflorey/diskmon?display_name=tag&style=flat-square)](https://github.com/aaronflorey/diskmon/releases/latest)
+[![License](https://img.shields.io/github/license/auron-labs/diskmon?style=flat-square)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/auron-labs/diskmon/test.yml?branch=main&label=ci&style=flat-square)](https://github.com/auron-labs/diskmon/actions/workflows/test.yml)
+[![Latest Release](https://img.shields.io/github/v/release/auron-labs/diskmon?display_name=tag&style=flat-square)](https://github.com/auron-labs/diskmon/releases/latest)
 
 ## What diskmon shows
 
@@ -34,7 +34,7 @@ Examples:
 ```bash
 # Linux amd64
 curl -L -o diskmon.tar.gz \
-  https://github.com/aaronflorey/diskmon/releases/download/vX.Y.Z/diskmon_X.Y.Z_linux_amd64.tar.gz
+  https://github.com/auron-labs/diskmon/releases/download/vX.Y.Z/diskmon_X.Y.Z_linux_amd64.tar.gz
 
 tar -xzf diskmon.tar.gz
 sudo install diskmon /usr/local/bin/diskmon
@@ -43,11 +43,20 @@ sudo install diskmon /usr/local/bin/diskmon
 ```bash
 # macOS arm64
 curl -L -o diskmon.tar.gz \
-  https://github.com/aaronflorey/diskmon/releases/download/vX.Y.Z/diskmon_X.Y.Z_darwin_arm64.tar.gz
+  https://github.com/auron-labs/diskmon/releases/download/vX.Y.Z/diskmon_X.Y.Z_darwin_arm64.tar.gz
 
 tar -xzf diskmon.tar.gz
 sudo install diskmon /usr/local/bin/diskmon
 ```
+
+### Homebrew
+
+```bash
+brew tap auron-labs/tap
+brew install --cask diskmon
+```
+
+Homebrew installs the cask from the `auron-labs/homebrew-tap` tap. For full DuckDB-backed storage support, prefer Linux CGO release artifacts or native Linux packages.
 
 ### From Linux packages (.deb/.rpm/.apk)
 
@@ -105,7 +114,7 @@ Health check endpoints:
 docker run --rm \
   -e DISKMON_WEB_LISTEN=0.0.0.0:8976 \
   -p 127.0.0.1:8976:8976 \
-  ghcr.io/aaronflorey/diskmon:latest daemon
+  ghcr.io/auron-labs/diskmon:latest daemon
 ```
 
 Docker caveats:

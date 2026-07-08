@@ -75,6 +75,22 @@ snapshot:
 changelog:
   use: github
 
+homebrew_casks:
+  - name: diskmon
+    ids:
+      - default
+    binaries:
+      - diskmon
+    repository:
+      owner: auron-labs
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    url:
+      verified: github.com/auron-labs/diskmon/
+    homepage: https://github.com/auron-labs/diskmon
+    description: Disk health monitoring daemon and CLI
+    license: MIT
+
 nfpms:
   - id: linux-packages-deb-rpm
     package_name: diskmon
