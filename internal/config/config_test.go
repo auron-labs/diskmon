@@ -10,6 +10,12 @@ import (
 	"github.com/spf13/pflag"
 )
 
+func TestDefaultWebListenUsesLoopback(t *testing.T) {
+	if got := Default().WebListen; got != "127.0.0.1:8976" {
+		t.Fatalf("expected loopback default, got %q", got)
+	}
+}
+
 func TestOptionalString(t *testing.T) {
 	if got := optionalString("   "); got != nil {
 		t.Fatalf("expected nil for whitespace, got %v", *got)
@@ -209,6 +215,72 @@ notifications:
 	}
 }
 
+func TestLoadFromPathWebListenDefaultsAndOverrides(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		t.Setenv("DISKMON_WEB_LISTEN", "")
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Getwd failed: %v", err)
+		}
+		t.Cleanup(func() {
+			if chdirErr := os.Chdir(cwd); chdirErr != nil {
+				t.Fatalf("restore cwd: %v", chdirErr)
+			}
+		})
+		if err := os.Chdir(t.TempDir()); err != nil {
+			t.Fatalf("Chdir failed: %v", err)
+		}
+
+		cfg, err := LoadFromPath("")
+		if err != nil {
+			t.Fatalf("LoadFromPath failed: %v", err)
+		}
+		if cfg.WebListen != "127.0.0.1:8976" {
+			t.Fatalf("expected loopback default, got %q", cfg.WebListen)
+		}
+	})
+
+	t.Run("yaml override", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "diskmon.yaml")
+		content := []byte("web:\n  listen: 0.0.0.0:8976\n")
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+
+		cfg, err := LoadFromPath(path)
+		if err != nil {
+			t.Fatalf("LoadFromPath failed: %v", err)
+		}
+		if cfg.WebListen != "0.0.0.0:8976" {
+			t.Fatalf("expected yaml override, got %q", cfg.WebListen)
+		}
+	})
+
+	t.Run("env override", func(t *testing.T) {
+		t.Setenv("DISKMON_WEB_LISTEN", "0.0.0.0:8976")
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Getwd failed: %v", err)
+		}
+		t.Cleanup(func() {
+			if chdirErr := os.Chdir(cwd); chdirErr != nil {
+				t.Fatalf("restore cwd: %v", chdirErr)
+			}
+		})
+		if err := os.Chdir(t.TempDir()); err != nil {
+			t.Fatalf("Chdir failed: %v", err)
+		}
+
+		cfg, err := LoadFromPath("")
+		if err != nil {
+			t.Fatalf("LoadFromPath failed: %v", err)
+		}
+		if cfg.WebListen != "0.0.0.0:8976" {
+			t.Fatalf("expected env override, got %q", cfg.WebListen)
+		}
+	})
+}
+
 func TestLoadFromPathNotificationsFromEnvJSON(t *testing.T) {
 	t.Setenv("DISKMON_NOTIFICATIONS", `[{"name":"discord-env","discord":{"bot_token":"token","channel_id":"123"}}]`)
 
@@ -248,6 +320,9 @@ func TestApplyFlagOverrides(t *testing.T) {
 	if err := flags.Set("interval", "30s"); err != nil {
 		t.Fatalf("set interval flag: %v", err)
 	}
+	if err := flags.Set("web-listen", "0.0.0.0:8976"); err != nil {
+		t.Fatalf("set web-listen flag: %v", err)
+	}
 	if err := flags.Set("drives", "/dev/sda,/dev/sdb"); err != nil {
 		t.Fatalf("set drives flag: %v", err)
 	}
@@ -259,6 +334,9 @@ func TestApplyFlagOverrides(t *testing.T) {
 	}
 	if cfg.Interval != 30*time.Second {
 		t.Fatalf("interval override not applied: %v", cfg.Interval)
+	}
+	if cfg.WebListen != "0.0.0.0:8976" {
+		t.Fatalf("web listen override not applied: %q", cfg.WebListen)
 	}
 	if len(cfg.Drives) != 2 {
 		t.Fatalf("drives override not applied: %v", cfg.Drives)

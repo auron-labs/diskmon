@@ -80,7 +80,7 @@ func Default() *Config {
 		Interval:      60 * time.Second,
 		Drives:        []string{},
 		Tests:         Tests{},
-		WebListen:     "0.0.0.0:8976",
+		WebListen:     "127.0.0.1:8976",
 		LogLevel:      "INFO",
 		Notifications: []NotificationConfig{},
 	}

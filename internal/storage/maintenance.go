@@ -2,13 +2,22 @@
 
 package storage
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
-func (d *DuckDB) DeleteIncompleteSmartTestRuns(ctx context.Context) (int64, error) {
+func (d *DuckDB) MarkIncompleteSmartTestRuns(ctx context.Context, now time.Time) (int64, error) {
+	prefix := "daemon restarted before final SMART self-test result was recorded at " + now.UTC().Format(time.RFC3339) + "; previous status: "
 	res, err := d.db.ExecContext(ctx, `
-		DELETE FROM smart_test_runs
-		WHERE UPPER(status) NOT IN ('FAILED', 'PASSED', 'SUCCESS', 'COMPLETED')
-	`)
+		UPDATE smart_test_runs
+		SET status = ?,
+		    message = CASE
+		        WHEN message IS NULL OR TRIM(message) = '' THEN ? || UPPER(COALESCE(NULLIF(TRIM(status), ''), 'UNKNOWN'))
+		        ELSE message || chr(10) || ? || UPPER(COALESCE(NULLIF(TRIM(status), ''), 'UNKNOWN'))
+		    END
+		WHERE UPPER(COALESCE(NULLIF(TRIM(status), ''), 'UNKNOWN')) NOT IN ('FAILED', 'PASSED', 'SUCCESS', 'COMPLETED', 'UNKNOWN', 'INCOMPLETE')
+	`, SmartTestStatusIncomplete, prefix, prefix)
 	if err != nil {
 		return 0, err
 	}

@@ -8,6 +8,8 @@ Type=simple
 ExecStart=/usr/bin/diskmon daemon --config /etc/diskmon/config.yaml --db /var/lib/diskmon/diskmon.duckdb
 Restart=on-failure
 RestartSec=5s
+# Keep the filesystem mostly read-only and only allow the state/runtime
+# directories diskmon needs for the DuckDB database and pid/runtime files.
 NoNewPrivileges=yes
 ProtectSystem=full
 ProtectHome=read-only
@@ -23,7 +25,11 @@ SystemCallArchitectures=native
 UMask=0027
 ReadWritePaths=/var/lib/diskmon /run/diskmon
 
-# SMART access typically requires elevated privileges.
+# SMART passthrough access commonly requires root on Linux, especially across
+# mixed SATA/NVMe/HBA setups and distro-specific udev/device ACL defaults.
+# Keep the packaged unit functional by default; evaluate a non-root service
+# user only after confirming smartctl can read every target device on this
+# host without sudo/capability workarounds.
 User=root
 Group=root
 

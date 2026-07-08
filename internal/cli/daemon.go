@@ -46,11 +46,11 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 			defer db.Close()
 
-			deletedRuns, err := db.DeleteIncompleteSmartTestRuns(ctx)
+			markedRuns, err := db.MarkIncompleteSmartTestRuns(ctx, time.Now().UTC())
 			if err != nil {
-				logger.Error("failed cleaning incomplete SMART test runs", "error", err)
-			} else if deletedRuns > 0 {
-				logger.Info("cleaned incomplete SMART test runs", "deleted", deletedRuns)
+				logger.Error("failed marking incomplete SMART test runs", "error", err)
+			} else if markedRuns > 0 {
+				logger.Info("marked incomplete SMART test runs", "updated", markedRuns)
 			}
 
 			collector := smart.NewCollector(smart.NewExecRunner(), logger)

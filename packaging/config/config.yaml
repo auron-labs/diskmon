@@ -8,23 +8,38 @@ collector:
     long: ""
 
 web:
-  listen: 0.0.0.0:8976
+  # Packaged default is intentionally local-only.
+  # To expose the UI on a LAN or public interface, explicitly opt in with
+  # `0.0.0.0:8976` (or another non-loopback address) and add external network
+  # controls such as a firewall, reverse proxy, or other access restrictions.
+  listen: 127.0.0.1:8976
 
 log:
   level: INFO
 
 # notifications:
+#   # Notification entries default to enabled when `enabled` is omitted.
+#   # `reasons.pass` and `reasons.fail` also default to true unless set explicitly.
+#   # Each entry name must be unique, and each entry must configure exactly one provider.
+#   # Treat webhook URLs, bot tokens, and channel IDs as secrets.
+#   # Prefer protected config files, env files, systemd EnvironmentFile entries, or
+#   # another secret store instead of typing notification secrets into shell commands.
+#   # Redact these values from logs, screenshots, and bug reports before sharing them.
 #   - name: http-alerts
 #     enabled: true
 #     reasons:
-#       pass: true
+#       pass: false
 #       fail: true
 #     http:
-#       url: https://example.com/diskmon/webhook
+#       url: https://notify.example.invalid/diskmon-http-webhook
 #
 #   - name: slack-webhook
+#     enabled: true
+#     reasons:
+#       pass: false
+#       fail: true
 #     slack:
-#       webhook_url: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX
+#       webhook_url: https://hooks.slack.example.invalid/services/T00000000/B00000000/diskmon-example-webhook
 #
 #   - name: slack-sdk
 #     enabled: false
@@ -32,14 +47,22 @@ log:
 #       pass: false
 #       fail: true
 #     slack:
-#       bot_token: xoxb-...
-#       channel_id: C0123456789
+#       bot_token: xoxb-diskmon-example-token
+#       channel_id: C000DISKMON
 #
 #   - name: discord-webhook
+#     enabled: true
+#     reasons:
+#       pass: false
+#       fail: true
 #     discord:
-#       webhook_url: https://discord.com/api/webhooks/...
+#       webhook_url: https://discord.example.invalid/api/webhooks/000000000000000000/diskmon-example-webhook
 #
 #   - name: discord-sdk
+#     enabled: true
+#     reasons:
+#       pass: false
+#       fail: true
 #     discord:
-#       bot_token: ...
-#       channel_id: "123456789012345678"
+#       bot_token: discord-diskmon-example-token
+#       channel_id: "000000000000000000"

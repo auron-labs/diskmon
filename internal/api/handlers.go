@@ -175,11 +175,30 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	ch, unsubscribe := h.events.Subscribe()
-	defer unsubscribe()
-
-	_, _ = w.Write([]byte("retry: 5000\n\n"))
+	lastEventID, hasLastEventID, lastEventIDValid := parseLastEventID(r)
+	if _, err := w.Write([]byte("retry: 5000\n\n")); err != nil {
+		return
+	}
 	flusher.Flush()
+
+	if hasLastEventID && !lastEventIDValid {
+		_ = writeSSEEvent(w, flusher, h.events.NewControlEvent("stream.resync"))
+		return
+	}
+
+	sub := h.events.Subscribe(lastEventID)
+	defer sub.Unsubscribe()
+
+	if sub.NeedsResync {
+		_ = writeSSEEvent(w, flusher, h.events.NewControlEvent("stream.resync"))
+		return
+	}
+
+	for _, ev := range sub.Replay {
+		if err := writeSSEEvent(w, flusher, ev); err != nil {
+			return
+		}
+	}
 
 	heartbeat := time.NewTicker(20 * time.Second)
 	defer heartbeat.Stop()
@@ -188,8 +207,11 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case ev, ok := <-ch:
+		case ev, ok := <-sub.Events:
 			if !ok {
+				if sub.IsDropped != nil && sub.IsDropped() {
+					_ = writeSSEEvent(w, flusher, h.events.NewControlEvent("stream.resync"))
+				}
 				return
 			}
 			if err := writeSSEEvent(w, flusher, ev); err != nil {
@@ -202,6 +224,22 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func parseLastEventID(r *http.Request) (int64, bool, bool) {
+	raw := r.Header.Get("Last-Event-ID")
+	if raw == "" {
+		raw = r.URL.Query().Get("last_event_id")
+	}
+	if raw == "" {
+		return 0, false, false
+	}
+
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, true, false
+	}
+	return id, true, true
 }
 
 func (h *Handlers) requireStorage(w http.ResponseWriter, r *http.Request) bool {

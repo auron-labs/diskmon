@@ -1,6 +1,34 @@
 package storage
 
-import "time"
+import (
+	"strings"
+	"time"
+)
+
+const (
+	SmartTestStatusStarted    = "STARTED"
+	SmartTestStatusInProgress = "IN_PROGRESS"
+	SmartTestStatusPassed     = "PASSED"
+	SmartTestStatusFailed     = "FAILED"
+	SmartTestStatusSuccess    = "SUCCESS"
+	SmartTestStatusCompleted  = "COMPLETED"
+	SmartTestStatusUnknown    = "UNKNOWN"
+	SmartTestStatusIncomplete = "INCOMPLETE"
+)
+
+func IsTerminalSmartTestStatus(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case SmartTestStatusFailed,
+		SmartTestStatusPassed,
+		SmartTestStatusSuccess,
+		SmartTestStatusCompleted,
+		SmartTestStatusUnknown,
+		SmartTestStatusIncomplete:
+		return true
+	default:
+		return false
+	}
+}
 
 type DriveSummary struct {
 	ID          int64      `json:"id"`

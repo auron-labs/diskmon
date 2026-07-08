@@ -43,6 +43,16 @@ tasks:
     cmds:
       - bun audit --cwd webui
 
+  lint-webui:
+    desc: Run webui lint checks
+    cmds:
+      - bun run --cwd webui lint
+
+  test-webui:
+    desc: Run webui unit/component tests
+    cmds:
+      - bun run --cwd webui test:run
+
   test:
     desc: Run go test ./...
     deps:

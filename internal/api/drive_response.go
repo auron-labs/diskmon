@@ -1,73 +1,18 @@
 package api
 
 import (
-	"encoding/json"
-
 	"diskmon/internal/health"
+	"diskmon/internal/storage"
 )
 
-func augmentDriveResponse(item any) any {
-	payload, ok := asJSONMap(item)
-	if !ok {
-		return item
-	}
-
-	if existing, ok := payload["health_guidance"]; ok {
-		switch v := existing.(type) {
-		case []any:
-			if len(v) > 0 {
-				return payload
-			}
-		case []string:
-			if len(v) > 0 {
-				return payload
-			}
-		}
-	}
-
-	guidance := health.GuidanceForReasons(extractHealthReasons(payload["health_reasons"]))
-	if len(guidance) > 0 {
-		payload["health_guidance"] = guidance
-	}
-
-	return payload
+type driveResponse struct {
+	*storage.DriveDetail
+	HealthGuidance []string `json:"health_guidance,omitempty"`
 }
 
-func extractHealthReasons(value any) []string {
-	switch v := value.(type) {
-	case string:
-		return health.ParseReasonList(v)
-	case []string:
-		return v
-	case []any:
-		reasons := make([]string, 0, len(v))
-		for _, item := range v {
-			s, ok := item.(string)
-			if !ok || s == "" {
-				continue
-			}
-			reasons = append(reasons, s)
-		}
-		return reasons
-	default:
-		return nil
+func augmentDriveResponse(item *storage.DriveDetail) driveResponse {
+	return driveResponse{
+		DriveDetail:    item,
+		HealthGuidance: health.GuidanceForReasons(health.ParseReasonList(item.HealthReasons)),
 	}
-}
-
-func asJSONMap(v any) (map[string]any, bool) {
-	if payload, ok := v.(map[string]any); ok {
-		return payload, true
-	}
-
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, false
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, false
-	}
-
-	return payload, true
 }

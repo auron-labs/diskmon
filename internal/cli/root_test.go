@@ -74,6 +74,33 @@ func TestNewRootCmdLogLevelFlagRejectsUnsupportedLevel(t *testing.T) {
 	}
 }
 
+func TestRootWebListenFlagOverridesConfigDefault(t *testing.T) {
+	configPath := writeRootTestConfig(t)
+	logger, levelVar, _ := newRootTestLogger(slog.LevelInfo)
+	cfg := config.Default()
+
+	ran := false
+	cmd := NewRootCmd(cfg, logger, levelVar)
+	cmd.AddCommand(&cobra.Command{
+		Use: "probe",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ran = true
+			return nil
+		},
+	})
+	cmd.SetArgs([]string{"--config", configPath, "--web-listen", "0.0.0.0:8976", "probe"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !ran {
+		t.Fatal("expected probe command to run")
+	}
+	if cfg.WebListen != "0.0.0.0:8976" {
+		t.Fatalf("expected flag override to win, got %q", cfg.WebListen)
+	}
+}
+
 func newRootTestLogger(initialLevel slog.Level) (*slog.Logger, *slog.LevelVar, *bytes.Buffer) {
 	var buf bytes.Buffer
 	levelVar := &slog.LevelVar{}

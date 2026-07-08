@@ -36,6 +36,12 @@ jobs:
       - name: Audit webui deps
         run: bun audit --cwd webui
 
+      - name: Lint webui
+        run: bun run --cwd webui lint
+
+      - name: Test webui
+        run: bun run --cwd webui test:run
+
       - name: Build webui
         run: bun run --cwd webui build
 
