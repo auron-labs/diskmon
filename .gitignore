@@ -290,3 +290,6 @@ web/dist
 build
 .task/
 /webui/.build-stamp
+.mise.local.toml
+hk.local.pkl
+pitchfork.local.toml

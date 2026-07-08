@@ -1,0 +1,44 @@
+amends "package://github.com/jdx/hk/releases/download/v1.50.0/hk@1.50.0#/Config.pkl"
+
+local linters = new Mapping<String, Step> {
+  ["go-fmt"] {
+    glob = "**/*.go"
+    fix = "gofmt -w {{ files }}"
+    check = "test -z \"$(gofmt -l {{ files }})\""
+  }
+
+  ["go-vet"] {
+    glob = "**/*.go"
+    check = "go vet ./..."
+  }
+
+  ["webui-eslint"] {
+    glob = "webui/**/*.{js,vue}"
+    check = "bun run --cwd webui lint"
+  }
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps = linters
+  }
+
+  ["commit-msg"] {
+    steps {
+      ["conventional-commit"] {
+        check = "hk util check-conventional-commit {{commit_msg_file}}"
+      }
+    }
+  }
+
+  ["check"] {
+    steps = linters
+  }
+
+  ["fix"] {
+    fix = true
+    steps = linters
+  }
+}

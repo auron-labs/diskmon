@@ -1,50 +1,44 @@
-name: goreleaser
+name: release
 
 on:
   push:
-    tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to release (example: v0.2.1)"
-        required: true
-        type: string
+    branches:
+      - main
+      - master
 
 permissions:
   contents: write
+  pull-requests: write
   packages: write
 
 jobs:
-  goreleaser:
-    # Pin to 22.04 so CGO-linked Linux binaries target an older glibc baseline.
-    runs-on: ubuntu-22.04
-
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - name: Validate manual release tag
-        if: github.event_name == 'workflow_dispatch'
-        id: validate_tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.tag }}
-        run: |
-          case "$INPUT_TAG" in
-            v*) ;;
-            *)
-              echo "workflow_dispatch tag must start with 'v'" >&2
-              exit 1
-              ;;
-          esac
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
-          RELEASE_REF="refs/tags/$INPUT_TAG"
-          git ls-remote --exit-code --refs "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" "$RELEASE_REF" >/dev/null
-          echo "ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout
+  goreleaser:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout release tag
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && steps.validate_tag.outputs.ref || github.ref }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -56,6 +50,14 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('webui/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install WebUI dependencies
         run: bun install --cwd webui --frozen-lockfile

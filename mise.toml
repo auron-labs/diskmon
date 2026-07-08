@@ -1,0 +1,79 @@
+[tools]
+go = "1.25.0"
+bun = "1.3.14"
+task = "3.52.0"
+goreleaser = "2.17.0"
+hk = "1.50.0"
+pkl = "0.31.1"
+
+[tasks.install]
+description = "Install webui dependencies"
+run = "bun install --cwd webui --frozen-lockfile"
+
+[tasks.format]
+description = "Format Go files"
+run = "task fmt"
+
+[tasks."format:check"]
+description = "Check Go formatting"
+run = "task fmt-check"
+
+[tasks.lint]
+description = "Run lint checks"
+depends = ["format:check", "vet", "lint:webui"]
+
+[tasks."lint:webui"]
+description = "Run webui lint checks"
+run = "task lint-webui"
+
+[tasks.vet]
+description = "Run go vet"
+run = "task vet"
+
+[tasks.test]
+description = "Run backend and webui tests"
+depends = ["test:webui"]
+run = "task test"
+
+[tasks."test:webui"]
+description = "Run webui tests"
+run = "task test-webui"
+
+[tasks.build]
+description = "Build native macOS and CGO Linux artifacts"
+run = "task build-all"
+
+[tasks."build:webui"]
+description = "Build the embedded web UI"
+run = "task build-webui"
+
+[tasks.check]
+description = "Run formatting, linting, and tests"
+depends = ["lint", "test"]
+
+[tasks.fix]
+description = "Run repository hook fixers"
+run = "hk fix"
+
+[tasks."hooks:install"]
+description = "Install Git hooks through mise"
+run = "hk install --mise"
+
+[tasks."release:check"]
+description = "Validate GoReleaser configuration"
+run = "goreleaser check"
+
+[tasks."dev:webui"]
+description = "Start the Vite webui dev server"
+depends = ["install"]
+run = "bun run --cwd webui dev"
+
+[tasks."dev:daemon"]
+description = "Start diskmon daemon locally"
+depends = ["build:webui"]
+run = "go run ./cmd/diskmon daemon"
+
+[tasks."release:snapshot"]
+description = "Build a local GoReleaser snapshot"
+depends = ["install"]
+run = "goreleaser release --snapshot --clean"

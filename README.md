@@ -2,7 +2,9 @@
 
 `diskmon` is a disk health monitoring daemon and CLI for SMART data collection with an embedded web UI.
 
-![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/aaronflorey/diskmon)
+[![License](https://img.shields.io/github/license/aaronflorey/diskmon?style=flat-square)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/aaronflorey/diskmon/test.yml?branch=main&label=ci&style=flat-square)](https://github.com/aaronflorey/diskmon/actions/workflows/test.yml)
+[![Latest Release](https://img.shields.io/github/v/release/aaronflorey/diskmon?display_name=tag&style=flat-square)](https://github.com/aaronflorey/diskmon/releases/latest)
 
 ## What diskmon shows
 
@@ -103,7 +105,7 @@ Health check endpoints:
 docker run --rm \
   -e DISKMON_WEB_LISTEN=0.0.0.0:8976 \
   -p 127.0.0.1:8976:8976 \
-  ghcr.io/<owner>/<repo>:latest daemon
+  ghcr.io/aaronflorey/diskmon:latest daemon
 ```
 
 Docker caveats:
@@ -284,19 +286,58 @@ Safer patterns:
 2. If you must use environment-based config, load it from a protected env file or systemd `EnvironmentFile=` rather than typing secrets directly into commands.
 3. When sharing configs for support, replace notification secrets with obvious fakes such as `https://notify.example.invalid/...` or `xoxb-diskmon-example-token`.
 
-## Local development
+## Development
 
-### Backend
+Install the pinned local tools and web UI dependencies:
 
 ```bash
+mise install
+bun install --cwd webui --frozen-lockfile
+```
+
+Install Git hooks for formatting, linting, and conventional commits:
+
+```bash
+hk install --mise
+```
+
+Common checks:
+
+```bash
+mise run check
+task fmt-check
+task vet
+task lint-webui
+task test-webui
 task test
-task build-mac
 ```
 
-### Frontend
+Build commands:
 
 ```bash
-cd webui
-bun install
-bun run dev
+task build-mac
+task build-linux-amd64
+task build-linux-arm64
+task build-linux-amd64-nocgo
 ```
+
+Start local development processes in separate terminals:
+
+```bash
+mise run dev:webui
+mise run dev:daemon
+```
+
+Release automation uses conventional commits, release-please, and GoReleaser. Maintainers can validate release configuration locally with:
+
+```bash
+mise run release:check
+```
+
+Full local release snapshots use `mise run release:snapshot` and may require Docker plus Linux cross-compilers.
+
+See `CONTRIBUTING.md` for contribution workflow, `SECURITY.md` for vulnerability reporting, and `CODE_OF_CONDUCT.md` for project conduct expectations.
+
+## License
+
+MIT. See `LICENSE`.
