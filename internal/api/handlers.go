@@ -1,7 +1,10 @@
 package api
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -11,13 +14,34 @@ import (
 	"github.com/go-chi/render"
 )
 
+type handlerStore interface {
+	Ready(ctx context.Context) error
+	ListDrives(ctx context.Context) ([]storage.DriveSummary, error)
+	GetDrive(ctx context.Context, id int64) (*storage.DriveDetail, error)
+	DriveHistory(ctx context.Context, id int64, limit int) ([]storage.HistoryPoint, error)
+	DriveAttributes(ctx context.Context, id int64) ([]storage.AttributePoint, error)
+	DriveTestRuns(ctx context.Context, id int64, page int, pageSize int) (*storage.SmartTestRunPage, error)
+}
+
+var _ handlerStore = (*storage.DuckDB)(nil)
+
 type Handlers struct {
-	db     *storage.DuckDB
+	logger *slog.Logger
+	db     handlerStore
 	events *EventBroker
 }
 
-func NewHandlers(db *storage.DuckDB, events *EventBroker) *Handlers {
-	return &Handlers{db: db, events: events}
+func NewHandlers(logger *slog.Logger, db *storage.DuckDB, events *EventBroker) *Handlers {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	var store handlerStore
+	if db != nil {
+		store = db
+	}
+
+	return &Handlers{logger: logger, db: store, events: events}
 }
 
 func (h *Handlers) Healthz(w http.ResponseWriter, r *http.Request) {
@@ -25,8 +49,7 @@ func (h *Handlers) Healthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Readyz(w http.ResponseWriter, r *http.Request) {
-	if h.db == nil {
-		renderError(w, r, http.StatusServiceUnavailable, "storage unavailable")
+	if !h.requireStorage(w, r) {
 		return
 	}
 	if err := h.db.Ready(r.Context()); err != nil {
@@ -37,22 +60,28 @@ func (h *Handlers) Readyz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ListDrives(w http.ResponseWriter, r *http.Request) {
+	if !h.requireStorage(w, r) {
+		return
+	}
 	items, err := h.db.ListDrives(r.Context())
 	if err != nil {
-		renderError(w, r, http.StatusInternalServerError, err.Error())
+		h.renderInternalError(w, r, err, "list drives")
 		return
 	}
 	render.JSON(w, r, items)
 }
 
 func (h *Handlers) GetDrive(w http.ResponseWriter, r *http.Request) {
+	if !h.requireStorage(w, r) {
+		return
+	}
 	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
 	item, err := h.db.GetDrive(r.Context(), id)
 	if err != nil {
-		renderError(w, r, http.StatusInternalServerError, err.Error())
+		h.renderInternalError(w, r, err, "get drive", slog.Int64("drive_id", id))
 		return
 	}
 	if item == nil {
@@ -63,32 +92,41 @@ func (h *Handlers) GetDrive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DriveHistory(w http.ResponseWriter, r *http.Request) {
+	if !h.requireStorage(w, r) {
+		return
+	}
 	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
 	points, err := h.db.DriveHistory(r.Context(), id, 200)
 	if err != nil {
-		renderError(w, r, http.StatusInternalServerError, err.Error())
+		h.renderInternalError(w, r, err, "load drive history", slog.Int64("drive_id", id))
 		return
 	}
 	render.JSON(w, r, points)
 }
 
 func (h *Handlers) DriveAttributes(w http.ResponseWriter, r *http.Request) {
+	if !h.requireStorage(w, r) {
+		return
+	}
 	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
 	attrs, err := h.db.DriveAttributes(r.Context(), id)
 	if err != nil {
-		renderError(w, r, http.StatusInternalServerError, err.Error())
+		h.renderInternalError(w, r, err, "load drive attributes", slog.Int64("drive_id", id))
 		return
 	}
 	render.JSON(w, r, attrs)
 }
 
 func (h *Handlers) DriveTests(w http.ResponseWriter, r *http.Request) {
+	if !h.requireStorage(w, r) {
+		return
+	}
 	id, ok := parseID(w, r)
 	if !ok {
 		return
@@ -100,7 +138,15 @@ func (h *Handlers) DriveTests(w http.ResponseWriter, r *http.Request) {
 	}
 	runs, err := h.db.DriveTestRuns(r.Context(), id, page, pageSize)
 	if err != nil {
-		renderError(w, r, http.StatusInternalServerError, err.Error())
+		h.renderInternalError(
+			w,
+			r,
+			err,
+			"load drive test runs",
+			slog.Int64("drive_id", id),
+			slog.Int("page", page),
+			slog.Int("page_size", pageSize),
+		)
 		return
 	}
 	render.JSON(w, r, runs)
@@ -151,6 +197,15 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handlers) requireStorage(w http.ResponseWriter, r *http.Request) bool {
+	if h.db != nil {
+		return true
+	}
+
+	renderError(w, r, http.StatusServiceUnavailable, "storage unavailable")
+	return false
+}
+
 func parseID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	raw := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(raw, 10, 64)
@@ -170,6 +225,44 @@ func parsePositiveInt(raw string, fallback int) int {
 		return fallback
 	}
 	return v
+}
+
+func (h *Handlers) renderInternalError(w http.ResponseWriter, r *http.Request, err error, operation string, attrs ...slog.Attr) {
+	status := http.StatusInternalServerError
+	fields := []any{
+		slog.String("operation", operation),
+		slog.String("endpoint", r.URL.Path),
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.Int("status", status),
+	}
+	if category := normalizeInternalErrorCategory(err); category != "" {
+		fields = append(fields, slog.String("error_category", category))
+	}
+	for _, attr := range attrs {
+		fields = append(fields, attr)
+	}
+
+	h.logger.Error("internal request failure", fields...)
+	renderError(w, r, status, "internal server error")
+}
+
+func normalizeInternalErrorCategory(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	t := reflect.TypeOf(err)
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil {
+		return "error"
+	}
+	if name := t.Name(); name != "" {
+		return name
+	}
+	return t.Kind().String()
 }
 
 func renderError(w http.ResponseWriter, r *http.Request, status int, message string) {

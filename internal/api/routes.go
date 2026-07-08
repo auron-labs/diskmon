@@ -20,7 +20,7 @@ func NewRouter(logger *slog.Logger, db *storage.DuckDB, events *EventBroker, sta
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
 
-	h := NewHandlers(db, events)
+	h := NewHandlers(logger, db, events)
 	r.Get("/healthz", h.Healthz)
 	r.Get("/readyz", h.Readyz)
 
