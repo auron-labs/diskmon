@@ -271,7 +271,7 @@ onUnmounted(() => {
               <span class="mono mb-1.5 block text-2xs uppercase tracking-wider text-[var(--text-tertiary)]">Search</span>
               <input
                 v-model="search"
-                class="mono w-full rounded-lg border border-edge bg-[var(--bg)]/40 px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition focus:border-accent/50"
+                class="mono w-full rounded-lg border border-edge bg-[var(--bg)]/40 px-3 py-2 text-sm text-[var(--text-primary)] outline-hidden transition focus:border-accent/50"
                 type="search"
                 placeholder="Device, model, serial, type"
               >
@@ -281,7 +281,7 @@ onUnmounted(() => {
               <span class="mono mb-1.5 block text-2xs uppercase tracking-wider text-[var(--text-tertiary)]">Health</span>
               <select
                 v-model="healthFilter"
-                class="mono w-full rounded-lg border border-edge bg-[var(--bg)]/40 px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition focus:border-accent/50"
+                class="mono w-full rounded-lg border border-edge bg-[var(--bg)]/40 px-3 py-2 text-sm text-[var(--text-primary)] outline-hidden transition focus:border-accent/50"
               >
                 <option v-for="option in healthFilters" :key="option.value" :value="option.value">
                   {{ option.label }}

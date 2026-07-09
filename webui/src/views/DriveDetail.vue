@@ -298,7 +298,7 @@ onUnmounted(() => {
             <div class="flex items-center gap-2 mb-2">
               <span class="mono text-xs uppercase tracking-wider text-[var(--text-secondary)]">{{ detail.device }}</span>
               <span
-                class="mono rounded px-1.5 py-0.5 text-2xs uppercase font-medium"
+                class="mono rounded-sm px-1.5 py-0.5 text-2xs uppercase font-medium"
                 :class="type === 'nvme' ? 'bg-accent/10 text-accent/70' : 'bg-white/5 text-[var(--text-secondary)]'"
               >{{ type }}</span>
             </div>
@@ -369,7 +369,7 @@ onUnmounted(() => {
             <p class="mono text-xs text-danger">{{ historyError }}</p>
             <button
               type="button"
-              class="mono rounded border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
+              class="mono rounded-sm border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
               :disabled="historyLoading"
               @click="retryHistory"
             >
@@ -396,7 +396,7 @@ onUnmounted(() => {
             <p class="mono text-xs text-danger">{{ testsError }}</p>
             <button
               type="button"
-              class="mono rounded border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
+              class="mono rounded-sm border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
               :disabled="testsLoading"
               @click="retryTests"
             >
@@ -428,7 +428,7 @@ onUnmounted(() => {
             <div class="flex items-center gap-2">
               <button
                 type="button"
-                class="mono rounded border border-edge px-2 py-1 text-2xs uppercase tracking-wider text-[var(--text-secondary)] disabled:opacity-40"
+                class="mono rounded-sm border border-edge px-2 py-1 text-2xs uppercase tracking-wider text-[var(--text-secondary)] disabled:opacity-40"
                 :disabled="testsPage <= 1"
                 @click="changeTestsPage(Math.max(1, testsPage - 1))"
               >
@@ -436,7 +436,7 @@ onUnmounted(() => {
               </button>
               <button
                 type="button"
-                class="mono rounded border border-edge px-2 py-1 text-2xs uppercase tracking-wider text-[var(--text-secondary)] disabled:opacity-40"
+                class="mono rounded-sm border border-edge px-2 py-1 text-2xs uppercase tracking-wider text-[var(--text-secondary)] disabled:opacity-40"
                 :disabled="testsPage >= totalTestPages"
                 @click="changeTestsPage(Math.min(totalTestPages, testsPage + 1))"
               >
@@ -458,7 +458,7 @@ onUnmounted(() => {
             <p class="mono text-xs text-danger">{{ attributesError }}</p>
             <button
               type="button"
-              class="mono rounded border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
+              class="mono rounded-sm border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
               :disabled="attributesLoading"
               @click="retryAttributes"
             >

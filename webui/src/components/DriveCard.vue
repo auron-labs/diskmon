@@ -35,7 +35,7 @@ const topAccent = computed(() => {
           <div class="flex items-center gap-2">
             <span class="mono text-2xs uppercase tracking-wider text-[var(--text-tertiary)]">{{ drive.device }}</span>
             <span
-              class="mono rounded px-1 py-0.5 text-2xs uppercase"
+              class="mono rounded-sm px-1 py-0.5 text-2xs uppercase"
               :class="type === 'nvme' ? 'bg-accent/10 text-accent/60' : 'bg-white/5 text-[var(--text-tertiary)]'"
             >{{ type }}</span>
           </div>

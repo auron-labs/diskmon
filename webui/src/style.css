@@ -1,6 +1,21 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #080c0e;
+  --color-panel: #0f1519;
+  --color-panel-elevated: #141c22;
+  --color-edge: #1e2d36;
+  --color-edge-subtle: #162028;
+  --color-accent: #c8ff3e;
+  --color-warm: #ffa63e;
+  --color-danger: #ff4757;
+  --color-ok: #3effa8;
+
+  --shadow-panel: 0 12px 40px rgba(0,0,0,0.5);
+  --shadow-panel-hover: 0 16px 48px rgba(0,0,0,0.6);
+
+  --text-2xs: 0.65rem;
+}
 
 :root {
   --bg: #080c0e;
