@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import HealthBadge from './HealthBadge.vue'
 import TemperatureBadge from './TemperatureBadge.vue'
-import { healthBorderAccent, healthGlow, formatPowerHours, driveType } from '../stores/format'
+import { driveType, formatPowerHours, healthAccent, healthBorderAccent, healthGlow } from '../stores/format'
 
 const props = defineProps({ drive: { type: Object, required: true }, index: { type: Number, default: 0 } })
 
@@ -10,12 +10,7 @@ const borderClass = computed(() => healthBorderAccent(props.drive.health))
 const glowClass = computed(() => healthGlow(props.drive.health))
 const type = computed(() => driveType(props.drive.device))
 
-const topAccent = computed(() => {
-  if (props.drive.health === 'RED') return 'bg-danger'
-  if (props.drive.health === 'YELLOW') return 'bg-warm'
-  if (props.drive.health === 'GREEN') return 'bg-ok'
-  return 'bg-[var(--edge)]'
-})
+const topAccent = computed(() => healthAccent(props.drive.health))
 </script>
 
 <template>

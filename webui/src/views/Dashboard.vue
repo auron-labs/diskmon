@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../api/client'
 import DriveCard from '../components/DriveCard.vue'
 import { useEventStream } from '../composables/useEventStream'
-import { driveType } from '../stores/format'
+import { driveType, normalizeHealthStatus } from '../stores/format'
 import { formatLastUpdated, formatTimestamp, isStale } from '../utils/time'
 
 const loading = ref(true)
@@ -11,31 +11,25 @@ const refreshing = ref(false)
 const error = ref('')
 const drives = ref([])
 const search = ref('')
-const healthFilter = ref('all')
+const healthFilter = ref('ALL')
 const lastSuccessfulUpdateAt = ref(null)
 const now = ref(new Date())
 
 let nowTimer = null
 
 const healthFilters = [
-  { value: 'all', label: 'All health' },
-  { value: 'green', label: 'Healthy' },
-  { value: 'yellow', label: 'Warning' },
-  { value: 'red', label: 'Critical' },
-  { value: 'unknown', label: 'Unknown' }
+  { value: 'ALL', label: 'All health' },
+  { value: 'GREEN', label: 'Healthy' },
+  { value: 'YELLOW', label: 'Warning' },
+  { value: 'RED', label: 'Critical' },
+  { value: 'UNKNOWN', label: 'Unknown' }
 ]
-
-function driveHealthValue(health) {
-  const normalized = (health || '').toLowerCase()
-  if (normalized === 'green' || normalized === 'yellow' || normalized === 'red') return normalized
-  return 'unknown'
-}
 
 const filteredDrives = computed(() => {
   const query = search.value.trim().toLowerCase()
 
   return drives.value.filter((drive) => {
-    const matchesHealth = healthFilter.value === 'all' || driveHealthValue(drive.health) === healthFilter.value
+    const matchesHealth = healthFilter.value === 'ALL' || normalizeHealthStatus(drive.health) === healthFilter.value
     if (!matchesHealth) return false
 
     if (!query) return true
@@ -64,13 +58,14 @@ const grouped = computed(() => {
 })
 
 const stats = computed(() => {
-  const all = filteredDrives.value
-  return {
-    total: all.length,
-    healthy: all.filter((drive) => drive.health === 'GREEN').length,
-    warning: all.filter((drive) => drive.health === 'YELLOW').length,
-    critical: all.filter((drive) => drive.health === 'RED').length
-  }
+  return filteredDrives.value.reduce((counts, drive) => {
+    const key = normalizeHealthStatus(drive.health)
+    if (key === 'GREEN') counts.healthy += 1
+    if (key === 'YELLOW') counts.warning += 1
+    if (key === 'RED') counts.critical += 1
+    counts.total += 1
+    return counts
+  }, { total: 0, healthy: 0, warning: 0, critical: 0 })
 })
 
 const labels = {
@@ -79,7 +74,7 @@ const labels = {
   unknown: 'Other Devices'
 }
 
-const filtersActive = computed(() => search.value.trim() !== '' || healthFilter.value !== 'all')
+const filtersActive = computed(() => search.value.trim() !== '' || healthFilter.value !== 'ALL')
 const hasVisibleDrives = computed(() => filteredDrives.value.length > 0)
 const hasAnyDrives = computed(() => drives.value.length > 0)
 const stale = computed(() => isStale(lastSuccessfulUpdateAt.value, { now: now.value }))
@@ -111,7 +106,7 @@ async function refreshNow() {
 }
 
 const { connect, status, lastEventAt, lastError, retryAttempt, needsResync } = useEventStream(
-  ['sample.inserted', 'test.updated'],
+  ['sample.inserted'],
   () => reload(),
   { debounceMs: 300 }
 )

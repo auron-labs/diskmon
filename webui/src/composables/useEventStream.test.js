@@ -112,6 +112,32 @@ describe('useEventStream', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     expect(onEvent).toHaveBeenCalledTimes(1)
+    expect(onEvent).toHaveBeenCalledWith(['sample.inserted', 'test.updated'])
+
+    await wrapper.unmount()
+  })
+
+  it('coalesces events that arrive while a reload is in flight', async () => {
+    let finishReload
+    const onEvent = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { finishReload = resolve }))
+      .mockResolvedValue(undefined)
+    const { wrapper, controls } = mountHarness({ onEvent, config: { debounceMs: 25 } })
+
+    controls.connect()
+    const sse = MockEventSource.instances[0]
+    sse.emit('sample.inserted', { data: '{}' })
+    await vi.advanceTimersByTimeAsync(25)
+
+    sse.emit('test.updated', { data: '{}' })
+    await vi.advanceTimersByTimeAsync(25)
+    expect(onEvent).toHaveBeenCalledTimes(1)
+
+    finishReload()
+    await vi.runAllTimersAsync()
+    expect(onEvent).toHaveBeenCalledTimes(2)
+    expect(onEvent).toHaveBeenLastCalledWith(['test.updated'])
 
     await wrapper.unmount()
   })

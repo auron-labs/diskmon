@@ -112,10 +112,6 @@ function testStatusClass(status) {
   return 'text-danger/80'
 }
 
-function markSectionUpdated(target) {
-  target.value = new Date()
-}
-
 function sectionMeta(label, updatedLabel) {
   return `${label} • Updated ${updatedLabel}`
 }
@@ -129,33 +125,12 @@ async function loadTestsPage(page) {
     testsPage.value = resp.page || page
     testsTotal.value = resp.total || 0
     testsError.value = ''
-    markSectionUpdated(testsUpdatedAt)
+    testsUpdatedAt.value = new Date()
   } catch (err) {
     testsError.value = err.message
-    throw err
   } finally {
     testsLoading.value = false
   }
-}
-
-async function changeTestsPage(page) {
-  try {
-    await loadTestsPage(page)
-  } catch {}
-}
-
-async function retryTests() {
-  try {
-    await loadTestsPage(testsPage.value || 1)
-  } catch {}
-}
-
-async function retryAttributes() {
-  await loadAttributes()
-}
-
-async function retryHistory() {
-  await loadHistory()
 }
 
 async function loadAttributes() {
@@ -163,7 +138,7 @@ async function loadAttributes() {
   try {
     attributes.value = await api.attributes(route.params.id)
     attributesError.value = ''
-    markSectionUpdated(attributesUpdatedAt)
+    attributesUpdatedAt.value = new Date()
   } catch (err) {
     attributesError.value = err.message
   } finally {
@@ -176,7 +151,7 @@ async function loadHistory() {
   try {
     history.value = await api.history(route.params.id)
     historyError.value = ''
-    markSectionUpdated(historyUpdatedAt)
+    historyUpdatedAt.value = new Date()
   } catch (err) {
     historyError.value = err.message
   } finally {
@@ -184,21 +159,20 @@ async function loadHistory() {
   }
 }
 
-async function loadDriveData(showLoading = false) {
+async function loadDriveSnapshot(showLoading = false) {
   if (showLoading) loading.value = true
   if (!showLoading && detail.value) refreshing.value = true
   try {
     const id = route.params.id
     const nextDetail = await api.drive(id)
     detail.value = nextDetail
-    markSectionUpdated(primaryUpdatedAt)
+    primaryUpdatedAt.value = new Date()
     error.value = ''
     refreshError.value = ''
 
-    await Promise.allSettled([
+    await Promise.all([
       loadAttributes(),
-      loadHistory(),
-      loadTestsPage(testsPage.value || 1),
+      loadHistory()
     ])
   } catch (err) {
     if (detail.value) {
@@ -212,13 +186,28 @@ async function loadDriveData(showLoading = false) {
   }
 }
 
-async function manualRefresh() {
-  await loadDriveData(false)
+async function loadDriveData(showLoading = false) {
+  await Promise.all([
+    loadDriveSnapshot(showLoading),
+    loadTestsPage(testsPage.value || 1)
+  ])
+}
+
+async function refreshForEvents(eventTypes) {
+  if (!eventTypes.length) {
+    await loadDriveData(false)
+    return
+  }
+
+  const refreshes = []
+  if (eventTypes.includes('sample.inserted')) refreshes.push(loadDriveSnapshot(false))
+  if (eventTypes.includes('test.updated')) refreshes.push(loadTestsPage(testsPage.value || 1))
+  await Promise.all(refreshes)
 }
 
 const { connect, status, lastError, retryAttempt, needsResync } = useEventStream(
   ['sample.inserted', 'test.updated'],
-  () => loadDriveData(false),
+  refreshForEvents,
   { debounceMs: 400, filterDevice: () => detail.value?.device }
 )
 
@@ -284,7 +273,7 @@ onUnmounted(() => {
             type="button"
             class="mono rounded-lg border border-edge px-3 py-2 text-2xs uppercase tracking-[0.18em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="loading || refreshing"
-            @click="manualRefresh"
+            @click="loadDriveData(false)"
           >
             {{ refreshing ? 'Refreshing…' : 'Refresh drive' }}
           </button>
@@ -371,7 +360,7 @@ onUnmounted(() => {
               type="button"
               class="mono rounded-sm border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
               :disabled="historyLoading"
-              @click="retryHistory"
+              @click="loadHistory"
             >
               {{ historyLoading ? 'Retrying...' : 'Retry history' }}
             </button>
@@ -398,7 +387,7 @@ onUnmounted(() => {
               type="button"
               class="mono rounded-sm border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
               :disabled="testsLoading"
-              @click="retryTests"
+              @click="loadTestsPage(testsPage || 1)"
             >
               {{ testsLoading ? 'Retrying...' : 'Retry tests' }}
             </button>
@@ -430,7 +419,7 @@ onUnmounted(() => {
                 type="button"
                 class="mono rounded-sm border border-edge px-2 py-1 text-2xs uppercase tracking-wider text-[var(--text-secondary)] disabled:opacity-40"
                 :disabled="testsPage <= 1"
-                @click="changeTestsPage(Math.max(1, testsPage - 1))"
+                @click="loadTestsPage(Math.max(1, testsPage - 1))"
               >
                 Prev
               </button>
@@ -438,7 +427,7 @@ onUnmounted(() => {
                 type="button"
                 class="mono rounded-sm border border-edge px-2 py-1 text-2xs uppercase tracking-wider text-[var(--text-secondary)] disabled:opacity-40"
                 :disabled="testsPage >= totalTestPages"
-                @click="changeTestsPage(Math.min(totalTestPages, testsPage + 1))"
+                @click="loadTestsPage(Math.min(totalTestPages, testsPage + 1))"
               >
                 Next
               </button>
@@ -460,7 +449,7 @@ onUnmounted(() => {
               type="button"
               class="mono rounded-sm border border-danger/40 px-2 py-1 text-2xs uppercase tracking-wider text-danger"
               :disabled="attributesLoading"
-              @click="retryAttributes"
+              @click="loadAttributes"
             >
               {{ attributesLoading ? 'Retrying...' : 'Retry attributes' }}
             </button>

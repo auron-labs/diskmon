@@ -6,6 +6,10 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
   let reconnectTimer = null
   let manualDisconnect = false
   let lastEventId = null
+  let reloadInFlight = false
+  let reloadPending = false
+  let forceResyncPending = false
+  const pendingEvents = new Set()
 
   const status = ref('disconnected')
   const lastEventAt = ref(null)
@@ -31,9 +35,9 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
     lastError.value = new Error(fallbackMessage)
   }
 
-  const reload = async ({ forceResync = false } = {}) => {
+  const reload = async ({ forceResync = false, eventTypes = [] } = {}) => {
     try {
-      await onEvent()
+      await onEvent(eventTypes)
       if (forceResync) {
         needsResync.value = false
       }
@@ -42,19 +46,43 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
     }
   }
 
-  const schedule = () => {
+  const flushReload = async ({ forceResync = false } = {}) => {
+    if (reloadInFlight) {
+      reloadPending = true
+      forceResyncPending ||= forceResync
+      return
+    }
+
+    reloadInFlight = true
+    try {
+      do {
+        reloadPending = false
+        forceResync ||= forceResyncPending
+        forceResyncPending = false
+        const eventTypes = [...pendingEvents]
+        pendingEvents.clear()
+        await reload({ forceResync, eventTypes })
+        forceResync = false
+      } while (reloadPending || pendingEvents.size)
+    } finally {
+      reloadInFlight = false
+    }
+  }
+
+  const schedule = (eventType) => {
+    pendingEvents.add(eventType)
     if (timer) return
     timer = setTimeout(async () => {
       timer = null
-      await reload()
+      await flushReload()
     }, debounceMs)
   }
 
-  const makeHandler = () => {
+  const makeHandler = (eventType) => {
     if (!filterDevice) {
       return (event) => {
         markEvent(event)
-        schedule()
+        schedule(eventType)
       }
     }
 
@@ -65,7 +93,7 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
         const device = filterDevice()
         if (device && payload.device && payload.device !== device) return
       } catch {}
-      schedule()
+      schedule(eventType)
     }
   }
 
@@ -76,7 +104,8 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
       clearTimeout(timer)
       timer = null
     }
-    await reload({ forceResync: true })
+    pendingEvents.clear()
+    await flushReload({ forceResync: true })
   }
 
   const closeStream = () => {
@@ -108,9 +137,8 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
     closeStream()
     status.value = retryAttempt.value > 0 ? 'reconnecting' : 'connecting'
     sse = new EventSource(buildStreamUrl())
-    const handler = makeHandler()
     for (const ev of events) {
-      sse.addEventListener(ev, handler)
+      sse.addEventListener(ev, makeHandler(ev))
     }
     sse.addEventListener('stream.resync', handleResync)
     sse.addEventListener('stream.dropped', handleResync)
@@ -148,6 +176,7 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
       clearTimeout(timer)
       timer = null
     }
+    pendingEvents.clear()
     status.value = 'disconnected'
     retryAttempt.value = 0
   }

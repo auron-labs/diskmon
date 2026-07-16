@@ -115,7 +115,7 @@ describe('Dashboard', () => {
     expect(wrapper.text()).not.toContain('Archive HDD')
     expect(wrapper.text()).not.toContain('Backup HDD')
 
-    await wrapper.find('select').setValue('red')
+    await wrapper.find('select').setValue('RED')
     expect(wrapper.text()).toContain('No drives match the current filters.')
 
     await wrapper.unmount()

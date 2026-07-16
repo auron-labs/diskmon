@@ -1,37 +1,63 @@
-export function healthColor(status) {
-  if (status === 'RED') return 'text-danger border-danger/40'
-  if (status === 'YELLOW') return 'text-warm border-warm/40'
-  if (status === 'GREEN') return 'text-ok border-ok/40'
-  return 'text-[var(--text-secondary)] border-[var(--edge)]'
+const healthMeta = {
+  RED: {
+    color: 'text-danger border-danger/40',
+    glow: 'glow-danger pulse-danger',
+    border: 'border-danger/25',
+    label: 'Critical',
+    icon: '!',
+    background: 'bg-danger/10',
+    dot: 'bg-danger',
+    accent: 'bg-danger'
+  },
+  YELLOW: {
+    color: 'text-warm border-warm/40',
+    glow: 'glow-warn',
+    border: 'border-warm/20',
+    label: 'Warning',
+    icon: '~',
+    background: 'bg-warm/10',
+    dot: 'bg-warm',
+    accent: 'bg-warm'
+  },
+  GREEN: {
+    color: 'text-ok border-ok/40',
+    glow: 'glow-ok',
+    border: 'border-ok/15',
+    label: 'Healthy',
+    icon: '+',
+    background: 'bg-ok/8',
+    dot: 'bg-ok',
+    accent: 'bg-ok'
+  },
+  UNKNOWN: {
+    color: 'text-[var(--text-secondary)] border-[var(--edge)]',
+    glow: '',
+    border: 'border-edge',
+    label: 'Unknown',
+    icon: '?',
+    background: 'bg-white/5',
+    dot: 'bg-[var(--text-tertiary)]',
+    accent: 'bg-[var(--edge)]'
+  }
 }
 
-export function healthGlow(status) {
-  if (status === 'RED') return 'glow-danger pulse-danger'
-  if (status === 'YELLOW') return 'glow-warn'
-  if (status === 'GREEN') return 'glow-ok'
-  return ''
+export function normalizeHealthStatus(status) {
+  const normalized = typeof status === 'string' ? status.toUpperCase() : ''
+  return Object.hasOwn(healthMeta, normalized) ? normalized : 'UNKNOWN'
 }
 
-export function healthBorderAccent(status) {
-  if (status === 'RED') return 'border-danger/25'
-  if (status === 'YELLOW') return 'border-warm/20'
-  if (status === 'GREEN') return 'border-ok/15'
-  return 'border-edge'
+function getHealthMeta(status) {
+  return healthMeta[normalizeHealthStatus(status)]
 }
 
-export function healthLabel(status) {
-  if (status === 'RED') return 'Critical'
-  if (status === 'YELLOW') return 'Warning'
-  if (status === 'GREEN') return 'Healthy'
-  return 'Unknown'
-}
-
-export function healthIcon(status) {
-  if (status === 'RED') return '!'
-  if (status === 'YELLOW') return '~'
-  if (status === 'GREEN') return '+'
-  return '?'
-}
+export const healthColor = (status) => getHealthMeta(status).color
+export const healthGlow = (status) => getHealthMeta(status).glow
+export const healthBorderAccent = (status) => getHealthMeta(status).border
+export const healthLabel = (status) => getHealthMeta(status).label
+export const healthIcon = (status) => getHealthMeta(status).icon
+export const healthBackground = (status) => getHealthMeta(status).background
+export const healthDot = (status) => getHealthMeta(status).dot
+export const healthAccent = (status) => getHealthMeta(status).accent
 
 export function tempText(v) {
   return v === null || v === undefined ? 'n/a' : `${v}°C`
