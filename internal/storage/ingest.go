@@ -13,44 +13,44 @@ import (
 	"diskmon/internal/smart"
 )
 
-func (d *DuckDB) InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (int64, error) {
+func (d *DuckDB) InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (sampleID int64, driveID int64, err error) {
 	conn, err := d.db.Conn(ctx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer conn.Close()
 
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	driveID, err := upsertDrive(ctx, tx, info, sample.CollectedAt)
+	driveID, err = upsertDrive(ctx, tx, info, sample.CollectedAt)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	sampleID, err := insertSmartSample(ctx, tx, driveID, sample)
+	sampleID, err = insertSmartSample(ctx, tx, driveID, sample)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	if err := insertAttributes(ctx, tx, sampleID, sample.Attributes); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO drive_health (drive_id, sample_id, status, score, reasons) VALUES (?, ?, ?, ?, ?)`,
 		driveID, sampleID, result.Status, result.Score, strings.Join(result.Reasons, "; ")); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return sampleID, nil
+	return sampleID, driveID, nil
 }
 
 func (d *DuckDB) InsertSmartTestRun(ctx context.Context, info smart.DriveInfo, run SmartTestRun) (int64, error) {
@@ -66,7 +66,11 @@ func (d *DuckDB) InsertSmartTestRun(ctx context.Context, info smart.DriveInfo, r
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	driveID, err := upsertDrive(ctx, tx, info, run.FinishedAt)
+	seenAt := run.StartedAt
+	if run.FinishedAt != nil {
+		seenAt = *run.FinishedAt
+	}
+	driveID, err := upsertDrive(ctx, tx, info, seenAt)
 	if err != nil {
 		return 0, err
 	}

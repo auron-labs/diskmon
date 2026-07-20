@@ -23,3 +23,15 @@ func (d *DuckDB) MarkIncompleteSmartTestRuns(ctx context.Context, now time.Time)
 	}
 	return res.RowsAffected()
 }
+
+func (d *DuckDB) PruneSamples(ctx context.Context, retention time.Duration, now time.Time) (int64, error) {
+	if retention <= 0 {
+		return 0, nil
+	}
+	cutoff := now.UTC().Add(-retention)
+	res, err := d.db.ExecContext(ctx, `DELETE FROM smart_samples WHERE collected_at < ?`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

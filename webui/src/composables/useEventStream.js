@@ -1,4 +1,5 @@
 import { onUnmounted, ref } from 'vue'
+import { api } from '../api/client'
 
 export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice = null } = {}) {
   let sse = null
@@ -127,9 +128,11 @@ export function useEventStream(events, onEvent, { debounceMs = 300, filterDevice
   }
 
   const buildStreamUrl = () => {
-    if (!lastEventId) return '/api/v1/events'
-    const params = new URLSearchParams({ last_event_id: lastEventId })
-    return `/api/v1/events?${params.toString()}`
+    const params = new URLSearchParams()
+    if (lastEventId) params.set('last_event_id', lastEventId)
+    if (api.hasAPIKey()) params.set('api_key', api.getAPIKey())
+    const qs = params.toString()
+    return qs ? `/api/v1/events?${qs}` : '/api/v1/events'
   }
 
   function openStream() {

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,26 +71,64 @@ func newBufferedLogger(buf *bytes.Buffer) *slog.Logger {
 	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{}))
 }
 
+// syncRecorder wraps httptest.ResponseRecorder with a mutex so concurrent
+// reads of Body from the test goroutine do not race with handler writes.
+type syncRecorder struct {
+	*httptest.ResponseRecorder
+	mu sync.Mutex
+}
+
+func newSyncRecorder() *syncRecorder {
+	return &syncRecorder{ResponseRecorder: httptest.NewRecorder()}
+}
+
+func (r *syncRecorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Write(p)
+}
+
+func (r *syncRecorder) BodyString() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Body.String()
+}
+
 type gatedEventStreamRecorder struct {
 	*httptest.ResponseRecorder
+	mu           sync.Mutex
 	blockOnEvent int32
 	release      chan struct{}
 	eventCount   atomic.Int32
+	body         bytes.Buffer
 }
 
 func newGatedEventStreamRecorder(blockOnEvent int) *gatedEventStreamRecorder {
-	return &gatedEventStreamRecorder{
+	r := &gatedEventStreamRecorder{
 		ResponseRecorder: httptest.NewRecorder(),
 		blockOnEvent:     int32(blockOnEvent),
 		release:          make(chan struct{}),
 	}
+	// Replace the underlying body with a synchronized buffer so concurrent
+	// reads from the test goroutine do not race with handler writes.
+	r.ResponseRecorder.Body = &r.body
+	return r
 }
 
 func (r *gatedEventStreamRecorder) Write(p []byte) (int, error) {
 	if bytes.HasPrefix(p, []byte("id: ")) && r.eventCount.Add(1) >= r.blockOnEvent {
 		<-r.release
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.ResponseRecorder.Write(p)
+}
+
+// BodyString returns a snapshot of the recorded body safe for concurrent use.
+func (r *gatedEventStreamRecorder) BodyString() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Body.String()
 }
 
 func (r *gatedEventStreamRecorder) Release() {
@@ -211,7 +250,7 @@ func TestEventsHandlerReplaysBufferedEventsBeforeLiveEvents(t *testing.T) {
 	defer cancel()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil).WithContext(ctx)
 	req.Header.Set("Last-Event-ID", strconv.FormatInt(lastSeenID, 10))
-	rec := httptest.NewRecorder()
+	rec := newSyncRecorder()
 	done := make(chan struct{})
 
 	go func() {
@@ -219,9 +258,9 @@ func TestEventsHandlerReplaysBufferedEventsBeforeLiveEvents(t *testing.T) {
 		h.Events(rec, req)
 	}()
 
-	waitForBodyContains(t, rec, "event: sample.deleted\n")
+	waitForSyncBodyContains(t, rec, "event: sample.deleted\n")
 	b.Publish("sample.live", "/dev/sdd")
-	waitForBodyContains(t, rec, "event: sample.live\n")
+	waitForSyncBodyContains(t, rec, "event: sample.live\n")
 	cancel()
 
 	select {
@@ -230,7 +269,7 @@ func TestEventsHandlerReplaysBufferedEventsBeforeLiveEvents(t *testing.T) {
 		t.Fatal("timed out waiting for event stream handler to exit")
 	}
 
-	body := rec.Body.String()
+	body := rec.BodyString()
 	positions := map[string]int{
 		"sample.updated": strings.Index(body, "event: sample.updated\n"),
 		"sample.deleted": strings.Index(body, "event: sample.deleted\n"),
@@ -332,7 +371,7 @@ func TestEventsHandlerClosesDroppedSubscriberWithVisibleResync(t *testing.T) {
 
 	waitForSubscriberCount(t, b, 1)
 	b.Publish("sample.first", "/dev/sda")
-	waitForBodyContains(t, rec.ResponseRecorder, "event: sample.first\n")
+	waitForGatedBodyContains(t, rec, "event: sample.first\n")
 	b.Publish("sample.second", "/dev/sdb")
 	b.Publish("sample.third", "/dev/sdc")
 	b.Publish("sample.overflow", "/dev/sdd")
@@ -344,7 +383,7 @@ func TestEventsHandlerClosesDroppedSubscriberWithVisibleResync(t *testing.T) {
 		t.Fatal("timed out waiting for dropped event stream handler to exit")
 	}
 
-	body := rec.Body.String()
+	body := rec.BodyString()
 	for _, want := range []string{"event: sample.first\n", "event: sample.second\n", "event: sample.third\n", "event: stream.resync\n"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected dropped stream body to contain %q, got %q", want, body)
@@ -418,6 +457,30 @@ func waitForBodyContains(t *testing.T, rec *httptest.ResponseRecorder, want stri
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %q in %q", want, rec.Body.String())
+}
+
+func waitForGatedBodyContains(t *testing.T, rec *gatedEventStreamRecorder, want string) {
+	t.Helper()
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(rec.BodyString(), want) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %q in %q", want, rec.BodyString())
+}
+
+func waitForSyncBodyContains(t *testing.T, rec *syncRecorder, want string) {
+	t.Helper()
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(rec.BodyString(), want) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %q in %q", want, rec.BodyString())
 }
 
 func waitForSubscriberCount(t *testing.T, b *EventBroker, want int) {

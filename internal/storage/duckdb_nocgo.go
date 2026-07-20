@@ -32,8 +32,8 @@ func (d *DuckDB) Ready(ctx context.Context) error {
 	return ErrCGODisabled
 }
 
-func (d *DuckDB) InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (int64, error) {
-	return 0, ErrCGODisabled
+func (d *DuckDB) InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (int64, int64, error) {
+	return 0, 0, ErrCGODisabled
 }
 
 func (d *DuckDB) InsertSmartTestRun(ctx context.Context, info smart.DriveInfo, run SmartTestRun) (int64, error) {
@@ -61,6 +61,10 @@ func (d *DuckDB) DriveTestRuns(ctx context.Context, id int64, page int, pageSize
 }
 
 func (d *DuckDB) MarkIncompleteSmartTestRuns(ctx context.Context, now time.Time) (int64, error) {
+	return 0, ErrCGODisabled
+}
+
+func (d *DuckDB) PruneSamples(ctx context.Context, retention time.Duration, now time.Time) (int64, error) {
 	return 0, ErrCGODisabled
 }
 

@@ -82,13 +82,13 @@ type AttributePoint struct {
 }
 
 type SmartTestRun struct {
-	ID          int64     `json:"id"`
-	TestType    string    `json:"test_type"`
-	ScheduledAt time.Time `json:"scheduled_at"`
-	StartedAt   time.Time `json:"started_at"`
-	FinishedAt  time.Time `json:"finished_at"`
-	Status      string    `json:"status"`
-	Message     string    `json:"message"`
+	ID          int64      `json:"id"`
+	TestType    string     `json:"test_type"`
+	ScheduledAt time.Time  `json:"scheduled_at"`
+	StartedAt   time.Time  `json:"started_at"`
+	FinishedAt  *time.Time `json:"finished_at"`
+	Status      string     `json:"status"`
+	Message     string     `json:"message"`
 }
 
 type SmartTestRunPage struct {

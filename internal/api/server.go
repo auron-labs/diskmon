@@ -16,8 +16,8 @@ type Server struct {
 	events *EventBroker
 }
 
-func NewServer(addr string, logger *slog.Logger, db *storage.DuckDB, events *EventBroker) *Server {
-	handler := NewRouter(logger, db, events, web.Assets())
+func NewServer(addr string, apiKey string, logger *slog.Logger, db *storage.DuckDB, events *EventBroker) *Server {
+	handler := NewRouter(logger, db, events, web.Assets(), apiKey)
 	return &Server{
 		log:    logger,
 		events: events,
@@ -25,6 +25,8 @@ func NewServer(addr string, logger *slog.Logger, db *storage.DuckDB, events *Eve
 			Addr:              addr,
 			Handler:           handler,
 			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		},
 	}
 }

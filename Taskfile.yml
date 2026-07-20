@@ -38,6 +38,18 @@ tasks:
     cmds:
       - go vet ./...
 
+  staticcheck:
+    desc: Run staticcheck ./...
+    cmds:
+      - staticcheck ./...
+
+  test-race:
+    desc: Run go test -race ./...
+    deps:
+      - build-webui
+    cmds:
+      - go test -race ./...
+
   audit-webui:
     desc: Audit webui dependencies
     cmds:

@@ -106,9 +106,13 @@ func (h *Handlers) DriveHistory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	points, err := h.db.DriveHistory(r.Context(), id, 200)
+	limit := parsePositiveInt(r.URL.Query().Get("limit"), 200)
+	if limit > 1000 {
+		limit = 1000
+	}
+	points, err := h.db.DriveHistory(r.Context(), id, limit)
 	if err != nil {
-		h.renderInternalError(w, r, err, "load drive history", slog.Int64("drive_id", id))
+		h.renderInternalError(w, r, err, "load drive history", slog.Int64("drive_id", id), slog.Int("limit", limit))
 		return
 	}
 	render.JSON(w, r, points)
@@ -195,6 +199,9 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, ev := range sub.Replay {
+		if err := r.Context().Err(); err != nil {
+			return
+		}
 		if err := writeSSEEvent(w, flusher, ev); err != nil {
 			return
 		}

@@ -136,7 +136,7 @@ func TestInsertSampleStoresNonEmptyIdentityKey(t *testing.T) {
 		Serial: "  S3Z9NX0T123456  ",
 	}
 
-	if _, err := db.InsertSample(ctx, info, smart.SmartSample{CollectedAt: collectedAt, RawJSON: `{}`}, health.Result{Status: health.StatusGreen, Score: 100}); err != nil {
+	if _, _, err := db.InsertSample(ctx, info, smart.SmartSample{CollectedAt: collectedAt, RawJSON: `{}`}, health.Result{Status: health.StatusGreen, Score: 100}); err != nil {
 		t.Fatalf("InsertSample returned error: %v", err)
 	}
 

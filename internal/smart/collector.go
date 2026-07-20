@@ -171,14 +171,36 @@ func (c *Collector) ReadSelfTestResult(ctx context.Context, device string, testT
 	return status, msg
 }
 
+// ReadSelfTestResultWithPowerOnHours returns the latest matching self-test log
+// entry along with its power_on_time.hours value (when present). The
+// power_on_hours value lets callers distinguish a freshly-completed test from
+// a stale entry left over from a previous run.
+func (c *Collector) ReadSelfTestResultWithPowerOnHours(ctx context.Context, device string, testType string) (string, string, *int64) {
+	raw, err := c.runner.RunSelfTestLog(ctx, device)
+	if err != nil {
+		return "UNKNOWN", err.Error(), nil
+	}
+	status, msg, poh, ok := parseSelfTestResultWithPowerOnHours(raw, testType)
+	if !ok {
+		return "UNKNOWN", strings.TrimSpace(string(raw)), nil
+	}
+	return status, msg, poh
+}
+
 func parseSelfTestResult(payload []byte, testType string) (string, string, bool) {
+	status, msg, _, ok := parseSelfTestResultWithPowerOnHours(payload, testType)
+	return status, msg, ok
+}
+
+func parseSelfTestResultWithPowerOnHours(payload []byte, testType string) (string, string, *int64, bool) {
 	table := gjson.GetBytes(payload, "ata_smart_self_test_log.standard.table")
 	if !table.Exists() || !table.IsArray() {
-		return "", "", false
+		return "", "", nil, false
 	}
 	foundMatch := false
 	fallbackState := ""
 	fallbackMessage := ""
+	var fallbackPowerOnHours *int64
 	for _, row := range table.Array() {
 		typeStr := strings.ToLower(strings.TrimSpace(row.Get("type.string").String()))
 		if !testTypeMatches(typeStr, testType) {
@@ -189,39 +211,53 @@ func parseSelfTestResult(payload []byte, testType string) (string, string, bool)
 		if statusStr == "" {
 			statusStr = "unknown"
 		}
+		poh := powerOnHoursFromRow(row)
 		lower := strings.ToLower(statusStr)
 		switch {
 		case strings.Contains(lower, "in progress"):
-			return "IN_PROGRESS", statusStr, true
+			return "IN_PROGRESS", statusStr, poh, true
 		case strings.Contains(lower, "without error"):
 			if fallbackState == "" {
 				fallbackState = "PASSED"
 				fallbackMessage = statusStr
+				fallbackPowerOnHours = poh
 			}
 		case strings.Contains(lower, "aborted"):
 			if fallbackState == "" {
 				fallbackState = "FAILED"
 				fallbackMessage = statusStr
+				fallbackPowerOnHours = poh
 			}
 		case strings.Contains(lower, "completed"):
 			if fallbackState == "" {
 				fallbackState = "FAILED"
 				fallbackMessage = statusStr
+				fallbackPowerOnHours = poh
 			}
 		default:
 			if fallbackState == "" {
 				fallbackState = "UNKNOWN"
 				fallbackMessage = statusStr
+				fallbackPowerOnHours = poh
 			}
 		}
 	}
 	if fallbackState != "" {
-		return fallbackState, fallbackMessage, true
+		return fallbackState, fallbackMessage, fallbackPowerOnHours, true
 	}
 	if foundMatch {
-		return "UNKNOWN", "unknown", true
+		return "UNKNOWN", "unknown", nil, true
 	}
-	return "", "", false
+	return "", "", nil, false
+}
+
+func powerOnHoursFromRow(row gjson.Result) *int64 {
+	poh := row.Get("power_on_time.hours")
+	if !poh.Exists() || poh.Type != gjson.Number {
+		return nil
+	}
+	v := poh.Int()
+	return &v
 }
 
 func testTypeMatches(typeStr string, wanted string) bool {

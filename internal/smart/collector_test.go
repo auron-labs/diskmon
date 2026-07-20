@@ -141,6 +141,38 @@ func TestParseSelfTestWait(t *testing.T) {
 	}
 }
 
+func TestParseSelfTestResultWithPowerOnHours(t *testing.T) {
+	payload := []byte(`{"ata_smart_self_test_log":{"standard":{"table":[
+		{"type":{"string":"Short offline"},"status":{"string":"Completed without error"},"power_on_time":{"hours":100}}
+	]}}}`)
+	status, msg, poh, ok := parseSelfTestResultWithPowerOnHours(payload, "short")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if status != "PASSED" {
+		t.Fatalf("status=%q want PASSED", status)
+	}
+	if poh == nil || *poh != 100 {
+		t.Fatalf("power_on_hours=%v want 100", poh)
+	}
+	if msg == "" {
+		t.Fatal("expected non-empty message")
+	}
+}
+
+func TestParseSelfTestResultWithPowerOnHoursMissing(t *testing.T) {
+	payload := []byte(`{"ata_smart_self_test_log":{"standard":{"table":[
+		{"type":{"string":"Short offline"},"status":{"string":"Completed without error"}}
+	]}}}`)
+	_, _, poh, ok := parseSelfTestResultWithPowerOnHours(payload, "short")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if poh != nil {
+		t.Fatalf("power_on_hours=%v want nil", poh)
+	}
+}
+
 func TestTestTypeMatches(t *testing.T) {
 	if !testTypeMatches("short offline", "short") {
 		t.Fatal("expected short match")

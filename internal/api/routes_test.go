@@ -8,7 +8,7 @@ import (
 )
 
 func TestRouterHealthz(t *testing.T) {
-	r := NewRouter(slog.Default(), nil, nil, nil)
+	r := NewRouter(slog.Default(), nil, nil, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
 
@@ -20,7 +20,7 @@ func TestRouterHealthz(t *testing.T) {
 }
 
 func TestRouterReadyzUnavailable(t *testing.T) {
-	r := NewRouter(slog.Default(), nil, nil, nil)
+	r := NewRouter(slog.Default(), nil, nil, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rec := httptest.NewRecorder()
 

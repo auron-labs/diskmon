@@ -22,9 +22,11 @@ type Config struct {
 	ConfigPath    string
 	Database      string
 	Interval      time.Duration
+	Retention     time.Duration
 	Drives        []string
 	Tests         Tests
 	WebListen     string
+	WebAPIKey     string
 	LogLevel      string
 	Notifications []NotificationConfig
 }
@@ -78,6 +80,7 @@ func Default() *Config {
 		ConfigPath:    "",
 		Database:      "diskmon.duckdb",
 		Interval:      60 * time.Second,
+		Retention:     0,
 		Drives:        []string{},
 		Tests:         Tests{},
 		WebListen:     "127.0.0.1:8976",
@@ -101,19 +104,23 @@ func LoadFromPath(path string) (*Config, error) {
 
 	v.SetDefault("database", cfg.Database)
 	v.SetDefault("collector.interval", cfg.Interval)
+	v.SetDefault("storage.retention", cfg.Retention)
 	v.SetDefault("collector.drives", cfg.Drives)
 	v.SetDefault("collector.tests.short", "")
 	v.SetDefault("collector.tests.long", "")
 	v.SetDefault("web.listen", cfg.WebListen)
+	v.SetDefault("web.api_key", "")
 	v.SetDefault("log.level", cfg.LogLevel)
 	v.SetDefault("notifications", []map[string]any{})
 
 	_ = v.BindEnv("database", "DISKMON_DATABASE")
 	_ = v.BindEnv("collector.interval", "DISKMON_INTERVAL")
+	_ = v.BindEnv("storage.retention", "DISKMON_RETENTION")
 	_ = v.BindEnv("collector.drives", "DISKMON_DRIVES")
 	_ = v.BindEnv("collector.tests.short", "DISKMON_TEST_SHORT")
 	_ = v.BindEnv("collector.tests.long", "DISKMON_TEST_LONG")
 	_ = v.BindEnv("web.listen", "DISKMON_WEB_LISTEN")
+	_ = v.BindEnv("web.api_key", "DISKMON_WEB_API_KEY")
 	_ = v.BindEnv("log.level", "DISKMON_LOG_LEVEL")
 	_ = v.BindEnv("notifications", "DISKMON_NOTIFICATIONS")
 
@@ -133,12 +140,14 @@ func LoadFromPath(path string) (*Config, error) {
 
 	cfg.Database = v.GetString("database")
 	cfg.Interval = v.GetDuration("collector.interval")
+	cfg.Retention = v.GetDuration("storage.retention")
 	cfg.Drives = v.GetStringSlice("collector.drives")
 	cfg.Tests = Tests{
 		Short: optionalString(v.GetString("collector.tests.short")),
 		Long:  optionalString(v.GetString("collector.tests.long")),
 	}
 	cfg.WebListen = v.GetString("web.listen")
+	cfg.WebAPIKey = strings.TrimSpace(v.GetString("web.api_key"))
 	cfg.LogLevel = strings.ToUpper(v.GetString("log.level"))
 	notifications, err := loadNotifications(v)
 	if err != nil {
@@ -163,8 +172,14 @@ func ApplyFlagOverrides(cfg *Config, flags *pflag.FlagSet) {
 	if flags.Changed("interval") {
 		cfg.Interval, _ = flags.GetDuration("interval")
 	}
+	if flags.Changed("retention") {
+		cfg.Retention, _ = flags.GetDuration("retention")
+	}
 	if flags.Changed("web-listen") {
 		cfg.WebListen, _ = flags.GetString("web-listen")
+	}
+	if flags.Changed("web-api-key") {
+		cfg.WebAPIKey, _ = flags.GetString("web-api-key")
 	}
 	if flags.Changed("drives") {
 		cfg.Drives, _ = flags.GetStringSlice("drives")
@@ -180,6 +195,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Interval <= 0 {
 		return fmt.Errorf("interval must be greater than zero")
+	}
+	if c.Retention < 0 {
+		return fmt.Errorf("storage.retention must not be negative")
 	}
 	if c.WebListen == "" {
 		return fmt.Errorf("web listen address is required")

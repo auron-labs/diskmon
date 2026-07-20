@@ -44,7 +44,7 @@ func newScanCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			stored := 0
 			for _, res := range results {
 				healthResult := evaluator.Evaluate(res.Sample)
-				if _, err := db.InsertSample(ctx, res.Info, res.Sample, healthResult); err != nil {
+				if _, _, err := db.InsertSample(ctx, res.Info, res.Sample, healthResult); err != nil {
 					logger.Error("failed to insert sample", "device", res.Info.Device, "error", err)
 					continue
 				}

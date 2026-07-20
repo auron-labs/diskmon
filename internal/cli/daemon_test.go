@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -63,11 +65,11 @@ func TestRunCollectionCycle_MultiDriveMultiEntryTransitions(t *testing.T) {
 	if len(events.published) != 2 {
 		t.Fatalf("expected 2 published sample events, got %d", len(events.published))
 	}
-	if opsSender.calls != 1 {
-		t.Fatalf("expected ops notification send count 1, got %d", opsSender.calls)
+	if opsSender.calls.Load() != 1 {
+		t.Fatalf("expected ops notification send count 1, got %d", opsSender.calls.Load())
 	}
-	if auditSender.calls != 0 {
-		t.Fatalf("expected audit notification send count 0, got %d", auditSender.calls)
+	if auditSender.calls.Load() != 0 {
+		t.Fatalf("expected audit notification send count 0, got %d", auditSender.calls.Load())
 	}
 
 	if got := store.states[stateKey(1, "ops")]; got != string(health.StatusYellow) {
@@ -136,11 +138,11 @@ func TestRunCollectionCycle_NotificationFailureDoesNotBlockOtherEntriesOrDrives(
 	if len(events.published) != 2 {
 		t.Fatalf("expected 2 published sample events, got %d", len(events.published))
 	}
-	if failingSender.calls != 2 {
-		t.Fatalf("expected failing sender called twice, got %d", failingSender.calls)
+	if failingSender.calls.Load() != 2 {
+		t.Fatalf("expected failing sender called twice, got %d", failingSender.calls.Load())
 	}
-	if okSender.calls != 2 {
-		t.Fatalf("expected ok sender called twice, got %d", okSender.calls)
+	if okSender.calls.Load() != 2 {
+		t.Fatalf("expected ok sender called twice, got %d", okSender.calls.Load())
 	}
 	if len(store.upserts) != 2 {
 		t.Fatalf("expected 2 dedupe state upserts, got %d", len(store.upserts))
@@ -199,8 +201,8 @@ func TestRunCollectionCycle_FailedSendRetriesSameNonGreenStatusNextCycle(t *test
 		testLogger(),
 	)
 
-	if sender.calls != 1 {
-		t.Fatalf("expected first cycle send attempt count 1, got %d", sender.calls)
+	if sender.calls.Load() != 1 {
+		t.Fatalf("expected first cycle send attempt count 1, got %d", sender.calls.Load())
 	}
 	if len(store.upserts) != 0 {
 		t.Fatalf("expected failed first cycle to skip dedupe persistence, got %d upserts", len(store.upserts))
@@ -223,8 +225,8 @@ func TestRunCollectionCycle_FailedSendRetriesSameNonGreenStatusNextCycle(t *test
 		testLogger(),
 	)
 
-	if sender.calls != 2 {
-		t.Fatalf("expected second cycle to retry same RED status, got %d total send attempts", sender.calls)
+	if sender.calls.Load() != 2 {
+		t.Fatalf("expected second cycle to retry same RED status, got %d total send attempts", sender.calls.Load())
 	}
 	if len(store.upserts) != 1 {
 		t.Fatalf("expected only successful retry to persist dedupe state, got %d upserts", len(store.upserts))
@@ -275,11 +277,11 @@ func TestRunCollectionCycle_NewDriveCreatedOnInsertDispatchesNotificationSameCyc
 	if len(events.published) != 1 {
 		t.Fatalf("expected 1 published sample event, got %d", len(events.published))
 	}
-	if sender.calls != 1 {
-		t.Fatalf("expected notification send count 1, got %d", sender.calls)
+	if sender.calls.Load() != 1 {
+		t.Fatalf("expected notification send count 1, got %d", sender.calls.Load())
 	}
-	if store.listDrivesCalls != 2 {
-		t.Fatalf("expected ListDrives to be called twice for refresh-on-miss, got %d", store.listDrivesCalls)
+	if store.listDrivesCalls != 0 {
+		t.Fatalf("expected ListDrives to never be called (driveID from InsertSample), got %d", store.listDrivesCalls)
 	}
 	if driveID := store.driveIDByDevice["/dev/sdz"]; driveID != 7 {
 		t.Fatalf("expected /dev/sdz to be assigned drive ID 7, got %d", driveID)
@@ -333,6 +335,7 @@ type upsertCall struct {
 }
 
 type fakeDaemonStore struct {
+	mu              sync.Mutex
 	driveIDByDevice map[string]int64
 	states          map[string]string
 	upserts         []upsertCall
@@ -340,7 +343,9 @@ type fakeDaemonStore struct {
 	listDrivesCalls int
 }
 
-func (f *fakeDaemonStore) InsertSample(_ context.Context, info smart.DriveInfo, _ smart.SmartSample, _ health.Result) (int64, error) {
+func (f *fakeDaemonStore) InsertSample(_ context.Context, info smart.DriveInfo, _ smart.SmartSample, _ health.Result) (int64, int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.driveIDByDevice == nil {
 		f.driveIDByDevice = map[string]int64{}
 	}
@@ -360,12 +365,15 @@ func (f *fakeDaemonStore) InsertSample(_ context.Context, info smart.DriveInfo, 
 		f.nextDriveID = nextDriveID + 1
 	}
 	if _, ok := f.driveIDByDevice[info.Device]; !ok {
-		return 0, fmt.Errorf("unknown device %s", info.Device)
+		return 0, 0, fmt.Errorf("unknown device %s", info.Device)
 	}
-	return f.driveIDByDevice[info.Device], nil
+	driveID := f.driveIDByDevice[info.Device]
+	return driveID, driveID, nil
 }
 
 func (f *fakeDaemonStore) ListDrives(_ context.Context) ([]storage.DriveSummary, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.listDrivesCalls++
 	out := make([]storage.DriveSummary, 0, len(f.driveIDByDevice))
 	for device, id := range f.driveIDByDevice {
@@ -375,6 +383,8 @@ func (f *fakeDaemonStore) ListDrives(_ context.Context) ([]storage.DriveSummary,
 }
 
 func (f *fakeDaemonStore) GetNotificationState(_ context.Context, driveID int64, notificationName string) (*storage.NotificationState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	state, ok := f.states[stateKey(driveID, notificationName)]
 	if !ok {
 		return nil, nil
@@ -388,6 +398,8 @@ func (f *fakeDaemonStore) GetNotificationState(_ context.Context, driveID int64,
 }
 
 func (f *fakeDaemonStore) UpsertNotificationState(_ context.Context, driveID int64, notificationName string, state string, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.states == nil {
 		f.states = map[string]string{}
 	}
@@ -398,6 +410,13 @@ func (f *fakeDaemonStore) UpsertNotificationState(_ context.Context, driveID int
 		state:   state,
 	})
 	return nil
+}
+
+func (f *fakeDaemonStore) PruneSamples(_ context.Context, retention time.Duration, _ time.Time) (int64, error) {
+	if retention <= 0 {
+		return 0, nil
+	}
+	return 0, nil
 }
 
 type fakeNotificationFactory struct {
@@ -413,12 +432,12 @@ func (f fakeNotificationFactory) Build(entry notification.Entry) (notification.S
 }
 
 type fakeNotificationSender struct {
-	calls int
+	calls atomic.Int32
 	err   error
 }
 
 func (f *fakeNotificationSender) Send(_ context.Context, _ string, _ string) error {
-	f.calls++
+	f.calls.Add(1)
 	return f.err
 }
 
@@ -441,4 +460,71 @@ func testLogger() *slog.Logger {
 
 func stateKey(driveID int64, notificationName string) string {
 	return fmt.Sprintf("%d:%s", driveID, notificationName)
+}
+
+func int64Ptr(v int64) *int64 { return &v }
+
+func TestIsStaleSelfTestResult(t *testing.T) {
+	cases := []struct {
+		name        string
+		candStatus  string
+		candMsg     string
+		candPowerOn *int64
+		baseStatus  string
+		baseMsg     string
+		basePowerOn *int64
+		wantStale   bool
+	}{
+		{
+			name:       "no power on hours, identical status and message",
+			candStatus: "PASSED", candMsg: "Completed without error",
+			baseStatus: "PASSED", baseMsg: "Completed without error",
+			wantStale: true,
+		},
+		{
+			name:       "no power on hours, different status",
+			candStatus: "PASSED", candMsg: "Completed without error",
+			baseStatus: "FAILED", baseMsg: "Aborted by host",
+			wantStale: false,
+		},
+		{
+			name:       "candidate power on hours greater than baseline is fresh",
+			candStatus: "PASSED", candMsg: "Completed without error", candPowerOn: int64Ptr(105),
+			baseStatus: "PASSED", baseMsg: "Completed without error", basePowerOn: int64Ptr(100),
+			wantStale: false,
+		},
+		{
+			name:       "candidate power on hours less than baseline is stale",
+			candStatus: "PASSED", candMsg: "Completed without error", candPowerOn: int64Ptr(95),
+			baseStatus: "PASSED", baseMsg: "Completed without error", basePowerOn: int64Ptr(100),
+			wantStale: true,
+		},
+		{
+			name:       "equal power on hours and identical status/message is stale",
+			candStatus: "PASSED", candMsg: "Completed without error", candPowerOn: int64Ptr(100),
+			baseStatus: "PASSED", baseMsg: "Completed without error", basePowerOn: int64Ptr(100),
+			wantStale: true,
+		},
+		{
+			name:       "equal power on hours but different status is fresh",
+			candStatus: "PASSED", candMsg: "Completed without error", candPowerOn: int64Ptr(100),
+			baseStatus: "FAILED", baseMsg: "Aborted by host", basePowerOn: int64Ptr(100),
+			wantStale: false,
+		},
+		{
+			name:       "candidate missing power on hours falls back to status/message match",
+			candStatus: "PASSED", candMsg: "Completed without error",
+			baseStatus: "PASSED", baseMsg: "Completed without error", basePowerOn: int64Ptr(100),
+			wantStale: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isStaleSelfTestResult(tc.candStatus, tc.candMsg, tc.candPowerOn, tc.baseStatus, tc.baseMsg, tc.basePowerOn)
+			if got != tc.wantStale {
+				t.Fatalf("isStaleSelfTestResult=%v want %v", got, tc.wantStale)
+			}
+		})
+	}
 }

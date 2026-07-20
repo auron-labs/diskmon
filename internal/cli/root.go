@@ -42,7 +42,9 @@ func NewRootCmd(cfg *config.Config, logger *slog.Logger, levelVar *slog.LevelVar
 	cmd.PersistentFlags().String("config", cfg.ConfigPath, "path to config yaml")
 	cmd.PersistentFlags().String("db", cfg.Database, "duckdb database path")
 	cmd.PersistentFlags().Duration("interval", cfg.Interval, "collection interval")
+	cmd.PersistentFlags().Duration("retention", cfg.Retention, "sample retention duration (0 disables pruning)")
 	cmd.PersistentFlags().String("web-listen", cfg.WebListen, "web listen address")
+	cmd.PersistentFlags().String("web-api-key", cfg.WebAPIKey, "API key required for /api/v1 requests (empty disables auth)")
 	cmd.PersistentFlags().StringSlice("drives", cfg.Drives, "comma separated device list")
 	cmd.PersistentFlags().String("log-level", cfg.LogLevel, "log level")
 

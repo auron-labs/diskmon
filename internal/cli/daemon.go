@@ -46,6 +46,10 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 			defer db.Close()
 
+			collector := smart.NewCollector(smart.NewExecRunner(), logger)
+			evaluator := health.NewEvaluator(health.DefaultRules())
+			events := api.NewEventBroker()
+
 			markedRuns, err := db.MarkIncompleteSmartTestRuns(ctx, time.Now().UTC())
 			if err != nil {
 				logger.Error("failed marking incomplete SMART test runs", "error", err)
@@ -53,15 +57,12 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 				logger.Info("marked incomplete SMART test runs", "updated", markedRuns)
 			}
 
-			collector := smart.NewCollector(smart.NewExecRunner(), logger)
-			evaluator := health.NewEvaluator(health.DefaultRules())
-			events := api.NewEventBroker()
 			notificationTargets, err := buildNotificationTargets(cfg)
 			if err != nil {
 				return err
 			}
 
-			apiServer := api.NewServer(cfg.WebListen, logger, db, events)
+			apiServer := api.NewServer(cfg.WebListen, cfg.WebAPIKey, logger, db, events)
 			errCh := make(chan error, 1)
 			go func() {
 				if err := apiServer.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -81,11 +82,34 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			ticker := time.NewTicker(cfg.Interval)
 			defer ticker.Stop()
 
+			// Prune on an hourly cadence (or every cycle if the interval
+			// is longer than an hour). A retention of zero disables pruning.
+			pruneInterval := time.Hour
+			if cfg.Interval > pruneInterval {
+				pruneInterval = cfg.Interval
+			}
+			pruneTicker := time.NewTicker(pruneInterval)
+			defer pruneTicker.Stop()
+
 			runCollection := func() {
 				runCollectionCycle(ctx, drives, collector, evaluator, db, events, notificationTargets, logger)
 			}
+			runPrune := func() {
+				if cfg.Retention <= 0 {
+					return
+				}
+				deleted, err := db.PruneSamples(ctx, cfg.Retention, time.Now().UTC())
+				if err != nil {
+					logger.Error("failed pruning old samples", "error", err)
+					return
+				}
+				if deleted > 0 {
+					logger.Info("pruned old samples", "deleted", deleted, "retention", cfg.Retention)
+				}
+			}
 
 			runCollection()
+			runPrune()
 			for {
 				select {
 				case <-ctx.Done():
@@ -104,6 +128,8 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 					return err
 				case <-ticker.C:
 					runCollection()
+				case <-pruneTicker.C:
+					runPrune()
 				}
 			}
 		},
@@ -119,10 +145,10 @@ type healthEvaluator interface {
 }
 
 type daemonStorage interface {
-	InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (int64, error)
-	ListDrives(ctx context.Context) ([]storage.DriveSummary, error)
+	InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (sampleID int64, driveID int64, err error)
 	GetNotificationState(ctx context.Context, driveID int64, notificationName string) (*storage.NotificationState, error)
 	UpsertNotificationState(ctx context.Context, driveID int64, notificationName string, state string, updatedAt time.Time) error
+	PruneSamples(ctx context.Context, retention time.Duration, now time.Time) (int64, error)
 }
 
 type eventPublisher interface {
@@ -154,35 +180,17 @@ func runCollectionCycle(
 		return
 	}
 
-	var driveIDByDevice map[string]int64
-	if len(targets) > 0 {
-		driveIDByDevice, err = buildDriveIDMap(ctx, db)
-		if err != nil {
-			logger.Error("failed loading drive map for notifications", "error", err)
-		}
-	}
-
 	for _, res := range results {
 		healthResult := evaluator.Evaluate(res.Sample)
-		if _, err := db.InsertSample(ctx, res.Info, res.Sample, healthResult); err != nil {
+		_, driveID, err := db.InsertSample(ctx, res.Info, res.Sample, healthResult)
+		if err != nil {
 			logger.Error("failed storing sample", "device", res.Info.Device, "error", err)
 			continue
 		}
 
 		events.Publish("sample.inserted", res.Info.Device)
 
-		if len(targets) == 0 || driveIDByDevice == nil {
-			continue
-		}
-
-		driveID, refreshedMap, err := resolveDriveIDForNotifications(ctx, db, driveIDByDevice, res.Info.Device)
-		if err != nil {
-			logger.Error("failed refreshing drive map for notifications", "device", res.Info.Device, "error", err)
-			continue
-		}
-		driveIDByDevice = refreshedMap
-		if driveID == 0 {
-			logger.Error("drive not found for notifications", "device", res.Info.Device)
+		if len(targets) == 0 {
 			continue
 		}
 
@@ -191,61 +199,73 @@ func runCollectionCycle(
 			updatedAt = time.Now().UTC()
 		}
 
-		for _, target := range targets {
-			var previousStatus *health.Status
-			previousState, err := db.GetNotificationState(ctx, driveID, target.name)
-			if err != nil {
-				logger.Error("failed loading notification dedupe state", "device", res.Info.Device, "notification", target.name, "error", err)
-				continue
-			}
-			if previousState != nil {
-				previousStatus = parseStoredHealthStatus(previousState.State)
-			}
+		dispatchNotificationsForDrive(ctx, db, targets, res.Info.Device, driveID, healthResult, updatedAt, logger)
+	}
+}
 
-			dispatchResult, err := target.dispatcher.DispatchIfNeeded(ctx, notification.DispatchRequest{
-				DriveID:        res.Info.Device,
-				PreviousStatus: previousStatus,
-				Current:        healthResult,
-			})
-			if err != nil {
-				logger.Error("notification dispatch failed", "device", res.Info.Device, "notification", target.name, "error", err)
-			}
+// dispatchNotificationsForDrive fans out notification dispatch across the
+// configured targets concurrently. Dedupe state persistence happens after
+// each target's dispatch completes; concurrent targets do not share state
+// because each (driveID, notification_name) pair is independent.
+func dispatchNotificationsForDrive(
+	ctx context.Context,
+	db daemonStorage,
+	targets []notificationTarget,
+	device string,
+	driveID int64,
+	healthResult health.Result,
+	updatedAt time.Time,
+	logger *slog.Logger,
+) {
+	var wg sync.WaitGroup
+	for _, target := range targets {
+		target := target
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dispatchSingleTarget(ctx, db, target, device, driveID, healthResult, updatedAt, logger)
+		}()
+	}
+	wg.Wait()
+}
 
-			for _, outcome := range dispatchResult.Outcomes {
-				if outcome.Attempted && !outcome.Sent {
-					continue
-				}
-				if err := db.UpsertNotificationState(ctx, driveID, outcome.Name, string(healthResult.Status), updatedAt); err != nil {
-					logger.Error("failed persisting notification dedupe state", "device", res.Info.Device, "notification", outcome.Name, "error", err)
-				}
-			}
+func dispatchSingleTarget(
+	ctx context.Context,
+	db daemonStorage,
+	target notificationTarget,
+	device string,
+	driveID int64,
+	healthResult health.Result,
+	updatedAt time.Time,
+	logger *slog.Logger,
+) {
+	var previousStatus *health.Status
+	previousState, err := db.GetNotificationState(ctx, driveID, target.name)
+	if err != nil {
+		logger.Error("failed loading notification dedupe state", "device", device, "notification", target.name, "error", err)
+		return
+	}
+	if previousState != nil {
+		previousStatus = parseStoredHealthStatus(previousState.State)
+	}
+
+	dispatchResult, err := target.dispatcher.DispatchIfNeeded(ctx, notification.DispatchRequest{
+		DriveID:        device,
+		PreviousStatus: previousStatus,
+		Current:        healthResult,
+	})
+	if err != nil {
+		logger.Error("notification dispatch failed", "device", device, "notification", target.name, "error", err)
+	}
+
+	for _, outcome := range dispatchResult.Outcomes {
+		if outcome.Attempted && !outcome.Sent {
+			continue
+		}
+		if err := db.UpsertNotificationState(ctx, driveID, outcome.Name, string(healthResult.Status), updatedAt); err != nil {
+			logger.Error("failed persisting notification dedupe state", "device", device, "notification", outcome.Name, "error", err)
 		}
 	}
-}
-
-func resolveDriveIDForNotifications(ctx context.Context, db daemonStorage, driveIDByDevice map[string]int64, device string) (int64, map[string]int64, error) {
-	if driveID, ok := driveIDByDevice[device]; ok {
-		return driveID, driveIDByDevice, nil
-	}
-
-	refreshedMap, err := buildDriveIDMap(ctx, db)
-	if err != nil {
-		return 0, driveIDByDevice, err
-	}
-
-	return refreshedMap[device], refreshedMap, nil
-}
-
-func buildDriveIDMap(ctx context.Context, db daemonStorage) (map[string]int64, error) {
-	drives, err := db.ListDrives(ctx)
-	if err != nil {
-		return nil, err
-	}
-	m := make(map[string]int64, len(drives))
-	for _, drive := range drives {
-		m[drive.Device] = drive.ID
-	}
-	return m, nil
 }
 
 func parseStoredHealthStatus(value string) *health.Status {
@@ -256,6 +276,48 @@ func parseStoredHealthStatus(value string) *health.Status {
 	default:
 		return nil
 	}
+}
+
+// isStaleSelfTestResult reports whether the candidate self-test log entry
+// matches the baseline captured before the test was started. A match means
+// the log has not yet been updated with the new run's result.
+//
+// When both entries carry a power_on_time.hours value, a strictly greater
+// candidate power-on-hours is enough to consider the entry fresh (the drive
+// has accumulated hours since the baseline was captured). Otherwise we fall
+// back to comparing status and message strings.
+func isStaleSelfTestResult(candidateStatus, candidateMsg string, candidatePowerOnHours *int64, baselineStatus, baselineMsg string, baselinePowerOnHours *int64) bool {
+	if candidatePowerOnHours != nil && baselinePowerOnHours != nil {
+		if *candidatePowerOnHours > *baselinePowerOnHours {
+			return false
+		}
+		if *candidatePowerOnHours < *baselinePowerOnHours {
+			return true
+		}
+	}
+	return candidateStatus == baselineStatus && candidateMsg == baselineMsg
+}
+
+// collectDevicesWithTestInProgress queries the live self-test log for each
+// device and returns the list of devices that currently report a test in
+// progress. These devices should be skipped by MarkIncompleteSmartTestRuns
+// so a genuinely running test is not falsely marked incomplete on restart.
+func collectDevicesWithTestInProgress(ctx context.Context, devices []string, collector *smart.Collector, logger *slog.Logger) []string {
+	var inProgress []string
+	for _, device := range devices {
+		status, _, _ := collector.ReadSelfTestResultWithPowerOnHours(ctx, device, "short")
+		if status == "IN_PROGRESS" {
+			inProgress = append(inProgress, device)
+			continue
+		}
+		if status, _, _ := collector.ReadSelfTestResultWithPowerOnHours(ctx, device, "long"); status == "IN_PROGRESS" {
+			inProgress = append(inProgress, device)
+		}
+	}
+	if len(inProgress) > 0 {
+		logger.Info("skipping incomplete-marking for drives with self-test in progress", "devices", inProgress)
+	}
+	return inProgress
 }
 
 func buildNotificationTargets(cfg *config.Config) ([]notificationTarget, error) {
@@ -365,7 +427,7 @@ func configureSmartTestCron(
 						inFlightMu.Unlock()
 					}()
 
-					baselineStatus, baselineMsg := collector.ReadSelfTestResult(ctx, device, testType)
+					baselineStatus, baselineMsg, baselinePowerOnHours := collector.ReadSelfTestResultWithPowerOnHours(ctx, device, testType)
 					if baselineStatus == "IN_PROGRESS" {
 						logger.Warn("skipping scheduled SMART test; device reports test already in progress", "device", device, "type", testType)
 						return
@@ -373,14 +435,15 @@ func configureSmartTestCron(
 
 					startedAt := time.Now().UTC()
 					output, runErr := collector.RunSelfTest(ctx, device, testType)
-					finishedAt := startedAt
 
+					var finishedAt *time.Time
 					status := "STARTED"
 					message := output
 					if runErr != nil {
 						status = "FAILED"
 						message = runErr.Error()
-						finishedAt = time.Now().UTC()
+						now := time.Now().UTC()
+						finishedAt = &now
 						logger.Error("scheduled SMART test failed", "device", device, "type", testType, "error", runErr)
 					} else {
 						logger.Info("scheduled SMART test triggered", "device", device, "type", testType)
@@ -416,14 +479,16 @@ func configureSmartTestCron(
 					finalStatus := "UNKNOWN"
 					finalMsg := "self-test result unavailable"
 					for i := 0; i < 12; i++ {
-						finalStatus, finalMsg = collector.ReadSelfTestResult(ctx, device, testType)
-						if finalStatus == "IN_PROGRESS" {
+						candidateStatus, candidateMsg, candidatePowerOnHours := collector.ReadSelfTestResultWithPowerOnHours(ctx, device, testType)
+						if candidateStatus == "IN_PROGRESS" {
 							// Test is still running, keep polling.
-						} else if finalStatus == baselineStatus && finalMsg == baselineMsg {
+						} else if isStaleSelfTestResult(candidateStatus, candidateMsg, candidatePowerOnHours, baselineStatus, baselineMsg, baselinePowerOnHours) {
 							// Result unchanged from before we started the test;
 							// likely a stale entry from a previous run.
-							logger.Debug("self-test result unchanged from baseline, still waiting", "device", device, "type", testType, "status", finalStatus)
+							logger.Debug("self-test result unchanged from baseline, still waiting", "device", device, "type", testType, "status", candidateStatus)
 						} else {
+							finalStatus = candidateStatus
+							finalMsg = candidateMsg
 							break
 						}
 						select {
@@ -438,7 +503,7 @@ func configureSmartTestCron(
 						TestType:    testType,
 						ScheduledAt: scheduledAt,
 						StartedAt:   startedAt,
-						FinishedAt:  finalFinishedAt,
+						FinishedAt:  &finalFinishedAt,
 						Status:      finalStatus,
 						Message:     finalMsg,
 					}); err != nil {

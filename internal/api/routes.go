@@ -13,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(logger *slog.Logger, db *storage.DuckDB, events *EventBroker, staticFS fs.FS) http.Handler {
+func NewRouter(logger *slog.Logger, db *storage.DuckDB, events *EventBroker, staticFS fs.FS, apiKey string) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -25,6 +25,7 @@ func NewRouter(logger *slog.Logger, db *storage.DuckDB, events *EventBroker, sta
 	r.Get("/readyz", h.Readyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
+		api.Use(apiKeyAuth(apiKey))
 		api.Get("/drives", h.ListDrives)
 		api.Get("/drives/{id}", h.GetDrive)
 		api.Get("/drives/{id}/history", h.DriveHistory)
