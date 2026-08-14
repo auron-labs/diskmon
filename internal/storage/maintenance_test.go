@@ -37,7 +37,7 @@ func TestMarkIncompleteSmartTestRuns(t *testing.T) {
 	}
 
 	now := time.Date(2026, 7, 8, 12, 30, 0, 0, time.UTC)
-	updated, err := db.MarkIncompleteSmartTestRuns(ctx, now)
+	updated, err := db.MarkIncompleteSmartTestRuns(ctx, now, nil)
 	if err != nil {
 		t.Fatalf("MarkIncompleteSmartTestRuns returned error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestMarkIncompleteSmartTestRuns(t *testing.T) {
 		firstPass[id] = value
 	}
 
-	updated, err = db.MarkIncompleteSmartTestRuns(ctx, now.Add(time.Minute))
+	updated, err = db.MarkIncompleteSmartTestRuns(ctx, now.Add(time.Minute), nil)
 	if err != nil {
 		t.Fatalf("second MarkIncompleteSmartTestRuns returned error: %v", err)
 	}
@@ -123,5 +123,50 @@ func TestMarkIncompleteSmartTestRuns(t *testing.T) {
 		if got := runs[id]; got != want {
 			t.Fatalf("run %d after second pass=%+v want %+v", id, got, want)
 		}
+	}
+}
+
+func TestMarkIncompleteSmartTestRunsSkipsDevicesWithTestInProgress(t *testing.T) {
+	db := openTestDuckDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	seenAt := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
+	insertTestDrive(t, db, 1, "/dev/disk1", seenAt)
+	insertTestDrive(t, db, 2, "/dev/disk2", seenAt)
+
+	if _, err := db.db.ExecContext(ctx, `
+		INSERT INTO smart_test_runs (id, drive_id, test_type, scheduled_at, started_at, finished_at, status, message)
+		VALUES
+			(10, 1, 'short', ?, ?, ?, 'STARTED', 'initial output'),
+			(11, 2, 'short', ?, ?, ?, 'STARTED', 'initial output')
+	`,
+		seenAt, seenAt, seenAt,
+		seenAt, seenAt, seenAt,
+	); err != nil {
+		t.Fatalf("insert smart_test_runs: %v", err)
+	}
+
+	now := time.Date(2026, 7, 8, 12, 30, 0, 0, time.UTC)
+	updated, err := db.MarkIncompleteSmartTestRuns(ctx, now, []string{"/dev/disk2"})
+	if err != nil {
+		t.Fatalf("MarkIncompleteSmartTestRuns returned error: %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("updated=%d want 1 (disk2 should be skipped)", updated)
+	}
+
+	var status1, status2 string
+	if err := db.db.QueryRowContext(ctx, `SELECT status FROM smart_test_runs WHERE id = 10`).Scan(&status1); err != nil {
+		t.Fatalf("query run 10: %v", err)
+	}
+	if status1 != SmartTestStatusIncomplete {
+		t.Fatalf("run 10 status=%q want %q", status1, SmartTestStatusIncomplete)
+	}
+	if err := db.db.QueryRowContext(ctx, `SELECT status FROM smart_test_runs WHERE id = 11`).Scan(&status2); err != nil {
+		t.Fatalf("query run 11: %v", err)
+	}
+	if status2 != "STARTED" {
+		t.Fatalf("run 11 status=%q want STARTED (skipped)", status2)
 	}
 }

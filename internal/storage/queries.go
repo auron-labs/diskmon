@@ -116,13 +116,14 @@ func (d *DuckDB) DriveAttributes(ctx context.Context, id int64) ([]AttributePoin
 	rows, err := d.db.QueryContext(ctx, `
 		SELECT a.attribute_id, a.name, a.value, a.worst, a.threshold, a.raw
 		FROM smart_attributes a
-		JOIN smart_samples s ON s.id = a.sample_id
-		WHERE s.drive_id = ?
-		  AND s.id = (
-			SELECT id FROM smart_samples WHERE drive_id = ? ORDER BY id DESC LIMIT 1
-		  )
+		JOIN LATERAL (
+			SELECT id FROM smart_samples
+			WHERE drive_id = ?
+			ORDER BY id DESC
+			LIMIT 1
+		) s ON a.sample_id = s.id
 		ORDER BY a.attribute_id
-	`, id, id)
+	`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +165,13 @@ func (d *DuckDB) DriveTestRuns(ctx context.Context, id int64, page int, pageSize
 	out := []SmartTestRun{}
 	for rows.Next() {
 		var item SmartTestRun
-		if err := rows.Scan(&item.ID, &item.TestType, &item.ScheduledAt, &item.StartedAt, &item.FinishedAt, &item.Status, &item.Message); err != nil {
+		var finishedAt sql.NullTime
+		if err := rows.Scan(&item.ID, &item.TestType, &item.ScheduledAt, &item.StartedAt, &finishedAt, &item.Status, &item.Message); err != nil {
 			return nil, err
+		}
+		if finishedAt.Valid {
+			t := finishedAt.Time
+			item.FinishedAt = &t
 		}
 		out = append(out, item)
 	}

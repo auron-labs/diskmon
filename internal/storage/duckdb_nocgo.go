@@ -60,7 +60,7 @@ func (d *DuckDB) DriveTestRuns(ctx context.Context, id int64, page int, pageSize
 	return nil, ErrCGODisabled
 }
 
-func (d *DuckDB) MarkIncompleteSmartTestRuns(ctx context.Context, now time.Time) (int64, error) {
+func (d *DuckDB) MarkIncompleteSmartTestRuns(ctx context.Context, now time.Time, skipDevices []string) (int64, error) {
 	return 0, ErrCGODisabled
 }
 

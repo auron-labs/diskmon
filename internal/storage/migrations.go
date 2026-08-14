@@ -36,6 +36,10 @@ func migrateDuckDB(ctx context.Context, tx *sql.Tx) error {
 		return err
 	}
 
+	if err := makeSmartTestRunsFinishedAtNullable(ctx, tx); err != nil {
+		return err
+	}
+
 	if err := ensureDuckDBQueryIndexes(ctx, tx); err != nil {
 		return err
 	}
@@ -51,6 +55,29 @@ func migrateDuckDB(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("create drives identity index: %w", err)
 	}
 
+	return nil
+}
+
+// makeSmartTestRunsFinishedAtNullable backfills existing databases where
+// smart_test_runs.finished_at was declared NOT NULL. New databases get the
+// nullable column directly from schema.sql, so this is a no-op for them.
+func makeSmartTestRunsFinishedAtNullable(ctx context.Context, tx *sql.Tx) error {
+	var nullable string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = current_schema()
+		  AND table_name = 'smart_test_runs'
+		  AND column_name = 'finished_at'
+	`).Scan(&nullable); err != nil {
+		return fmt.Errorf("query smart_test_runs.finished_at nullability: %w", err)
+	}
+	if nullable == "YES" {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE smart_test_runs ALTER COLUMN finished_at DROP NOT NULL`); err != nil {
+		return fmt.Errorf("drop NOT NULL on smart_test_runs.finished_at: %w", err)
+	}
 	return nil
 }
 
@@ -141,7 +168,7 @@ type smartTestRunRow struct {
 	TestType    string
 	ScheduledAt time.Time
 	StartedAt   time.Time
-	FinishedAt  time.Time
+	FinishedAt  sql.NullTime
 	Status      string
 	Message     sql.NullString
 }

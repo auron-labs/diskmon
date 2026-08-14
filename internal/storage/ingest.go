@@ -13,7 +13,7 @@ import (
 	"diskmon/internal/smart"
 )
 
-func (d *DuckDB) InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (sampleID int64, driveID int64, err error) {
+func (d *DuckDB) InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (int64, int64, error) {
 	conn, err := d.db.Conn(ctx)
 	if err != nil {
 		return 0, 0, err
@@ -26,12 +26,12 @@ func (d *DuckDB) InsertSample(ctx context.Context, info smart.DriveInfo, sample 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	driveID, err = upsertDrive(ctx, tx, info, sample.CollectedAt)
+	driveID, err := upsertDrive(ctx, tx, info, sample.CollectedAt)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	sampleID, err = insertSmartSample(ctx, tx, driveID, sample)
+	sampleID, err := insertSmartSample(ctx, tx, driveID, sample)
 	if err != nil {
 		return 0, 0, err
 	}
