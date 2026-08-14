@@ -50,7 +50,8 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			evaluator := health.NewEvaluator(health.DefaultRules())
 			events := api.NewEventBroker()
 
-			markedRuns, err := db.MarkIncompleteSmartTestRuns(ctx, time.Now().UTC())
+			inProgressDevices := collectDevicesWithTestInProgress(ctx, drives, collector, logger)
+			markedRuns, err := db.MarkIncompleteSmartTestRuns(ctx, time.Now().UTC(), inProgressDevices)
 			if err != nil {
 				logger.Error("failed marking incomplete SMART test runs", "error", err)
 			} else if markedRuns > 0 {

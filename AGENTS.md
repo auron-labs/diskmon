@@ -25,6 +25,10 @@ Frontend (from `webui/`):
 - `bun run dev`
 - `bun run build`
 
+Dev daemons (via `pitchfork.toml`): `pitchfork start webui daemon` runs the Vite
+dev server (port 5173) and the diskmon daemon (port 8976). The daemon restarts
+on Go source changes. `smartctl` must be on `PATH` for the daemon to start.
+
 ## Coding Style & Naming Conventions
 - Go style: `gofmt` output is required; keep files focused and readable.
 - Package names are short, lowercase nouns (`smart`, `health`, `storage`).

@@ -1,0 +1,9 @@
+[daemons.webui]
+run = "mise run dev:webui"
+ready_port = 5173
+
+[daemons.daemon]
+run = "mise run dev:daemon"
+ready_port = 8976
+watch = ["internal/**/*.go", "cmd/**/*.go"]
+retry = 3
