@@ -447,18 +447,6 @@ func parseSSEIDs(t *testing.T, body string) []int64 {
 	return ids
 }
 
-func waitForBodyContains(t *testing.T, rec *httptest.ResponseRecorder, want string) {
-	t.Helper()
-	deadline := time.Now().Add(1 * time.Second)
-	for time.Now().Before(deadline) {
-		if strings.Contains(rec.Body.String(), want) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("timed out waiting for %q in %q", want, rec.Body.String())
-}
-
 func waitForGatedBodyContains(t *testing.T, rec *gatedEventStreamRecorder, want string) {
 	t.Helper()
 	deadline := time.Now().Add(1 * time.Second)

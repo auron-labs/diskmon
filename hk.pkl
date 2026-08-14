@@ -12,6 +12,11 @@ local linters = new Mapping<String, Step> {
     check = "go vet ./..."
   }
 
+  ["go-staticcheck"] {
+    glob = "**/*.go"
+    check = "staticcheck ./..."
+  }
+
   ["webui-eslint"] {
     glob = "webui/**/*.{js,vue}"
     check = "bun run --cwd webui lint"
