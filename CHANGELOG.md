@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/auron-labs/diskmon/compare/v0.5.0...v0.6.0) (2026-08-15)
+
+
+### Features
+
+* add retention ([32e8eab](https://github.com/auron-labs/diskmon/commit/32e8eabb4a4c2c8329de6be4be6e8a5dc9d06f80))
+* improve security and integrity ([d063bfd](https://github.com/auron-labs/diskmon/commit/d063bfddb0507d19ab3d39e84a2d59803f8956f4))
+
+
+### Bug Fixes
+
+* invalid call to MarkIncompleteSmartTestRuns ([807f09d](https://github.com/auron-labs/diskmon/commit/807f09db74691eb79f4524e8c5da64ce38f9c972))
+* static check issues ([090c2a5](https://github.com/auron-labs/diskmon/commit/090c2a590aa6d40341283c0708a9cabcc7bb5680))
+
 ## [0.5.0](https://github.com/auron-labs/diskmon/compare/v0.4.0...v0.5.0) (2026-07-09)
 
 
