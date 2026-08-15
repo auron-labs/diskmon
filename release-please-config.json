@@ -8,6 +8,7 @@
       "release-type": "simple",
       "include-v-in-tag": true,
       "include-component-in-tag": false,
+      "draft": true,
       "changelog-path": "CHANGELOG.md",
       "version-file": "VERSION",
       "extra-files": [

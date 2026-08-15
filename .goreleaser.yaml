@@ -2,6 +2,14 @@ version: 2
 
 project_name: diskmon
 
+release:
+  # release-please creates the release as a draft; adopt it, upload the
+  # binaries, then publish so assets are attached before the release becomes
+  # immutable.
+  mode: keep-existing
+  use_existing_draft: true
+  replace_existing_artifacts: true
+
 before:
   hooks:
     - bun install --cwd webui --frozen-lockfile
