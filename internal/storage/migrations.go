@@ -17,6 +17,14 @@ func migrateDuckDB(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
+	for _, stmt := range []string{
+		`ALTER TABLE smart_hourly_rollups ADD COLUMN IF NOT EXISTS temp_count BIGINT DEFAULT 0`,
+		`ALTER TABLE smart_daily_rollups ADD COLUMN IF NOT EXISTS temp_count BIGINT DEFAULT 0`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("migrate rollup temperature counts: %w", err)
+		}
+	}
 
 	hasIdentityKey, err := drivesHasColumn(ctx, tx, "identity_key")
 	if err != nil {

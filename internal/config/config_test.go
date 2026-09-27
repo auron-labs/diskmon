@@ -16,6 +16,51 @@ func TestDefaultWebListenUsesLoopback(t *testing.T) {
 	}
 }
 
+func TestTierRetentionDefaultsAndValidation(t *testing.T) {
+	cfg := Default()
+	if cfg.RawRetention != 672*time.Hour || cfg.HourlyRetention != 4320*time.Hour || cfg.DailyRetention != 43800*time.Hour {
+		t.Fatalf("unexpected tier retention defaults: raw=%v hourly=%v daily=%v", cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention)
+	}
+	cfg.RawRetention = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("zero raw retention should disable only the raw tier: %v", err)
+	}
+	cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention = 0, 0, 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("all-zero tier retention should disable maintenance: %v", err)
+	}
+	cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention = 48*time.Hour, 0, 24*time.Hour
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected enabled retentions to remain ordered when hourly tier is disabled")
+	}
+	cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention = 48*time.Hour, 0, 72*time.Hour
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("ordered enabled tiers should allow a disabled middle tier: %v", err)
+	}
+}
+
+func TestLoadTierRetentionsAndEnvironmentPrecedence(t *testing.T) {
+	for _, key := range []string{"DISKMON_RAW_RETENTION", "DISKMON_HOURLY_RETENTION", "DISKMON_DAILY_RETENTION", "DISKMON_RETENTION"} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("DISKMON_RAW_RETENTION", "48h")
+	t.Setenv("DISKMON_HOURLY_RETENTION", "0s")
+	path := filepath.Join(t.TempDir(), "diskmon.yaml")
+	if err := os.WriteFile(path, []byte("storage:\n  raw_retention: 24h\n  hourly_retention: 240h\n  daily_retention: 8760h\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("LoadFromPath failed: %v", err)
+	}
+	if cfg.RawRetention != 48*time.Hour || cfg.HourlyRetention != 0 || cfg.DailyRetention != 8760*time.Hour {
+		t.Fatalf("unexpected loaded tier retentions: raw=%v hourly=%v daily=%v", cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("disabled hourly tier should validate: %v", err)
+	}
+}
+
 func TestOptionalString(t *testing.T) {
 	if got := optionalString("   "); got != nil {
 		t.Fatalf("expected nil for whitespace, got %v", *got)
@@ -310,6 +355,7 @@ func TestApplyFlagOverrides(t *testing.T) {
 	flags.String("config", cfg.ConfigPath, "")
 	flags.String("db", cfg.Database, "")
 	flags.Duration("interval", cfg.Interval, "")
+	flags.Duration("retention", cfg.Retention, "")
 	flags.String("web-listen", cfg.WebListen, "")
 	flags.StringSlice("drives", cfg.Drives, "")
 	flags.String("log-level", cfg.LogLevel, "")
@@ -319,6 +365,9 @@ func TestApplyFlagOverrides(t *testing.T) {
 	}
 	if err := flags.Set("interval", "30s"); err != nil {
 		t.Fatalf("set interval flag: %v", err)
+	}
+	if err := flags.Set("retention", "72h"); err != nil {
+		t.Fatalf("set retention flag: %v", err)
 	}
 	if err := flags.Set("web-listen", "0.0.0.0:8976"); err != nil {
 		t.Fatalf("set web-listen flag: %v", err)
@@ -334,6 +383,9 @@ func TestApplyFlagOverrides(t *testing.T) {
 	}
 	if cfg.Interval != 30*time.Second {
 		t.Fatalf("interval override not applied: %v", cfg.Interval)
+	}
+	if cfg.RawRetention != 72*time.Hour || cfg.HourlyRetention != 72*time.Hour || cfg.DailyRetention != 72*time.Hour {
+		t.Fatalf("legacy retention flag should apply uniformly: raw=%v hourly=%v daily=%v", cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention)
 	}
 	if cfg.WebListen != "0.0.0.0:8976" {
 		t.Fatalf("web listen override not applied: %q", cfg.WebListen)

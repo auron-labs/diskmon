@@ -83,34 +83,38 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			ticker := time.NewTicker(cfg.Interval)
 			defer ticker.Stop()
 
-			// Prune on an hourly cadence (or every cycle if the interval
-			// is longer than an hour). A retention of zero disables pruning.
-			pruneInterval := time.Hour
-			if cfg.Interval > pruneInterval {
-				pruneInterval = cfg.Interval
-			}
-			pruneTicker := time.NewTicker(pruneInterval)
-			defer pruneTicker.Stop()
+			maintenanceTicker := time.NewTicker(time.Hour)
+			defer maintenanceTicker.Stop()
 
 			runCollection := func() {
 				runCollectionCycle(ctx, drives, collector, evaluator, db, events, notificationTargets, logger)
 			}
-			runPrune := func() {
-				if cfg.Retention <= 0 {
-					return
-				}
-				deleted, err := db.PruneSamples(ctx, cfg.Retention, time.Now().UTC())
+			runTierMaintenance := func() {
+				result, err := db.TierMaintenance(ctx, time.Now().UTC(), storage.TierPolicy{
+					RawRetention: cfg.RawRetention, HourlyRetention: cfg.HourlyRetention, DailyRetention: cfg.DailyRetention,
+				})
 				if err != nil {
-					logger.Error("failed pruning old samples", "error", err)
+					logger.Error("failed maintaining storage tiers", "error", err)
 					return
 				}
-				if deleted > 0 {
-					logger.Info("pruned old samples", "deleted", deleted, "retention", cfg.Retention)
+				work := result.RawSamplesRolled + result.HourlyRowsRolled + result.DailyRowsDeleted + result.PendingSamplesDeleted
+				if work == 0 {
+					return
+				}
+				logger.Info("maintained storage tiers", "raw_rolled", result.RawSamplesRolled, "hourly_rolled", result.HourlyRowsRolled, "daily_deleted", result.DailyRowsDeleted, "pending_samples_deleted", result.PendingSamplesDeleted, "pending_rows_remaining", result.PendingRowsRemaining)
+				conn, err := db.Conn(ctx)
+				if err != nil {
+					logger.Error("failed opening database connection for checkpoint", "error", err)
+					return
+				}
+				defer conn.Close()
+				if _, err := conn.ExecContext(ctx, "CHECKPOINT"); err != nil {
+					logger.Error("failed checkpointing database after tier maintenance", "error", err)
 				}
 			}
 
 			runCollection()
-			runPrune()
+			runTierMaintenance()
 			for {
 				select {
 				case <-ctx.Done():
@@ -129,8 +133,8 @@ func newDaemonCmd(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 					return err
 				case <-ticker.C:
 					runCollection()
-				case <-pruneTicker.C:
-					runPrune()
+				case <-maintenanceTicker.C:
+					runTierMaintenance()
 				}
 			}
 		},
@@ -149,7 +153,6 @@ type daemonStorage interface {
 	InsertSample(ctx context.Context, info smart.DriveInfo, sample smart.SmartSample, result health.Result) (sampleID int64, driveID int64, err error)
 	GetNotificationState(ctx context.Context, driveID int64, notificationName string) (*storage.NotificationState, error)
 	UpsertNotificationState(ctx context.Context, driveID int64, notificationName string, state string, updatedAt time.Time) error
-	PruneSamples(ctx context.Context, retention time.Duration, now time.Time) (int64, error)
 }
 
 type eventPublisher interface {

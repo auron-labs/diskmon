@@ -3,11 +3,15 @@ import { computed } from 'vue'
 
 const props = defineProps({ points: { type: Array, default: () => [] } })
 
+function formatTemperature(value) {
+  return Number(value.toFixed(1))
+}
+
 const chartData = computed(() => {
   const pts = [...props.points].reverse().filter((p) => p.temperature != null)
   if (pts.length < 2) return null
 
-  const temps = pts.map((p) => p.temperature)
+  const temps = pts.flatMap((p) => [p.temperature, p.temperature_max ?? p.temperature])
   const min = Math.min(...temps)
   const max = Math.max(...temps)
   const span = max - min
@@ -21,6 +25,10 @@ const chartData = computed(() => {
   const coords = pts.map((p, i) => ({
     x: (i / (pts.length - 1)) * 100,
     y: 100 - ((p.temperature - yMin) / ySpan) * 100
+  }))
+  const peakCoords = pts.map((p, i) => ({
+    x: (i / (pts.length - 1)) * 100,
+    y: 100 - (((p.temperature_max ?? p.temperature) - yMin) / ySpan) * 100
   }))
 
   const path = coords.map((c) => `${c.x},${c.y}`).join(' ')
@@ -39,7 +47,8 @@ const chartData = computed(() => {
     }
   }
 
-  return { path, area, yLabels, min, max, isFlat, latest: temps[temps.length - 1] }
+  const peakPath = peakCoords.map((c) => `${c.x},${c.y}`).join(' ')
+  return { path, peakPath, area, yLabels, min, max, isFlat }
 })
 </script>
 
@@ -48,8 +57,8 @@ const chartData = computed(() => {
     <div class="flex items-center justify-between mb-4">
       <p class="mono text-2xs uppercase tracking-wider text-[var(--text-tertiary)]">Temperature History</p>
       <p v-if="chartData" class="mono text-xs text-[var(--text-secondary)]">
-        <template v-if="chartData.isFlat">steady at {{ chartData.min }}°C</template>
-        <template v-else>{{ chartData.min }}°C — {{ chartData.max }}°C</template>
+        <template v-if="chartData.isFlat">steady at {{ formatTemperature(chartData.min) }}°C</template>
+        <template v-else>{{ formatTemperature(chartData.min) }}°C — {{ formatTemperature(chartData.max) }}°C</template>
       </p>
     </div>
 
@@ -81,6 +90,17 @@ const chartData = computed(() => {
           fill="none"
           stroke="#c8ff3e"
           stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          vector-effect="non-scaling-stroke"
+        />
+        <polyline
+          v-if="chartData.peakPath !== chartData.path"
+          :points="chartData.peakPath"
+          fill="none"
+          stroke="#ff9f43"
+          stroke-width="1"
+          stroke-dasharray="2 2"
           stroke-linecap="round"
           stroke-linejoin="round"
           vector-effect="non-scaling-stroke"

@@ -19,6 +19,7 @@ type handlerStore interface {
 	ListDrives(ctx context.Context) ([]storage.DriveSummary, error)
 	GetDrive(ctx context.Context, id int64) (*storage.DriveDetail, error)
 	DriveHistory(ctx context.Context, id int64, limit int) ([]storage.HistoryPoint, error)
+	DriveHistoryRange(ctx context.Context, id int64, period string) (*storage.HistoryResult, error)
 	DriveAttributes(ctx context.Context, id int64) ([]storage.AttributePoint, error)
 	DriveTestRuns(ctx context.Context, id int64, page int, pageSize int) (*storage.SmartTestRunPage, error)
 }
@@ -106,6 +107,19 @@ func (h *Handlers) DriveHistory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if period := r.URL.Query().Get("range"); period != "" {
+		if !validHistoryRange(period) {
+			renderError(w, r, http.StatusBadRequest, "invalid history range")
+			return
+		}
+		result, err := h.db.DriveHistoryRange(r.Context(), id, period)
+		if err != nil {
+			h.renderInternalError(w, r, err, "load drive history", slog.Int64("drive_id", id), slog.String("range", period))
+			return
+		}
+		render.JSON(w, r, result)
+		return
+	}
 	limit := parsePositiveInt(r.URL.Query().Get("limit"), 200)
 	if limit > 1000 {
 		limit = 1000
@@ -116,6 +130,15 @@ func (h *Handlers) DriveHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render.JSON(w, r, points)
+}
+
+func validHistoryRange(period string) bool {
+	switch period {
+	case "24h", "7d", "30d", "6m", "1y", "all":
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *Handlers) DriveAttributes(w http.ResponseWriter, r *http.Request) {

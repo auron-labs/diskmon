@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -19,16 +20,19 @@ type Tests struct {
 }
 
 type Config struct {
-	ConfigPath    string
-	Database      string
-	Interval      time.Duration
-	Retention     time.Duration
-	Drives        []string
-	Tests         Tests
-	WebListen     string
-	WebAPIKey     string
-	LogLevel      string
-	Notifications []NotificationConfig
+	ConfigPath      string
+	Database        string
+	Interval        time.Duration
+	Retention       time.Duration
+	RawRetention    time.Duration
+	HourlyRetention time.Duration
+	DailyRetention  time.Duration
+	Drives          []string
+	Tests           Tests
+	WebListen       string
+	WebAPIKey       string
+	LogLevel        string
+	Notifications   []NotificationConfig
 }
 
 type NotificationConfig struct {
@@ -77,15 +81,18 @@ type rawNotificationReasonConfig struct {
 
 func Default() *Config {
 	return &Config{
-		ConfigPath:    "",
-		Database:      "diskmon.duckdb",
-		Interval:      60 * time.Second,
-		Retention:     0,
-		Drives:        []string{},
-		Tests:         Tests{},
-		WebListen:     "127.0.0.1:8976",
-		LogLevel:      "INFO",
-		Notifications: []NotificationConfig{},
+		ConfigPath:      "",
+		Database:        "diskmon.duckdb",
+		Interval:        60 * time.Second,
+		Retention:       0,
+		RawRetention:    28 * 24 * time.Hour,
+		HourlyRetention: 180 * 24 * time.Hour,
+		DailyRetention:  5 * 365 * 24 * time.Hour,
+		Drives:          []string{},
+		Tests:           Tests{},
+		WebListen:       "127.0.0.1:8976",
+		LogLevel:        "INFO",
+		Notifications:   []NotificationConfig{},
 	}
 }
 
@@ -104,6 +111,9 @@ func LoadFromPath(path string) (*Config, error) {
 
 	v.SetDefault("database", cfg.Database)
 	v.SetDefault("collector.interval", cfg.Interval)
+	v.SetDefault("storage.raw_retention", cfg.RawRetention)
+	v.SetDefault("storage.hourly_retention", cfg.HourlyRetention)
+	v.SetDefault("storage.daily_retention", cfg.DailyRetention)
 	v.SetDefault("storage.retention", cfg.Retention)
 	v.SetDefault("collector.drives", cfg.Drives)
 	v.SetDefault("collector.tests.short", "")
@@ -115,6 +125,9 @@ func LoadFromPath(path string) (*Config, error) {
 
 	_ = v.BindEnv("database", "DISKMON_DATABASE")
 	_ = v.BindEnv("collector.interval", "DISKMON_INTERVAL")
+	_ = v.BindEnv("storage.raw_retention", "DISKMON_RAW_RETENTION")
+	_ = v.BindEnv("storage.hourly_retention", "DISKMON_HOURLY_RETENTION")
+	_ = v.BindEnv("storage.daily_retention", "DISKMON_DAILY_RETENTION")
 	_ = v.BindEnv("storage.retention", "DISKMON_RETENTION")
 	_ = v.BindEnv("collector.drives", "DISKMON_DRIVES")
 	_ = v.BindEnv("collector.tests.short", "DISKMON_TEST_SHORT")
@@ -140,7 +153,23 @@ func LoadFromPath(path string) (*Config, error) {
 
 	cfg.Database = v.GetString("database")
 	cfg.Interval = v.GetDuration("collector.interval")
-	cfg.Retention = v.GetDuration("storage.retention")
+	cfg.RawRetention = v.GetDuration("storage.raw_retention")
+	cfg.HourlyRetention = v.GetDuration("storage.hourly_retention")
+	cfg.DailyRetention = v.GetDuration("storage.daily_retention")
+	legacyRetentionEnv, legacyRetentionEnvSet := os.LookupEnv("DISKMON_RETENTION")
+	if v.InConfig("storage.retention") || (legacyRetentionEnvSet && strings.TrimSpace(legacyRetentionEnv) != "") {
+		cfg.Retention = v.GetDuration("storage.retention")
+		cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention = cfg.Retention, cfg.Retention, cfg.Retention
+		if value, ok := os.LookupEnv("DISKMON_RAW_RETENTION"); ok && strings.TrimSpace(value) != "" {
+			cfg.RawRetention = v.GetDuration("storage.raw_retention")
+		}
+		if value, ok := os.LookupEnv("DISKMON_HOURLY_RETENTION"); ok && strings.TrimSpace(value) != "" {
+			cfg.HourlyRetention = v.GetDuration("storage.hourly_retention")
+		}
+		if value, ok := os.LookupEnv("DISKMON_DAILY_RETENTION"); ok && strings.TrimSpace(value) != "" {
+			cfg.DailyRetention = v.GetDuration("storage.daily_retention")
+		}
+	}
 	cfg.Drives = v.GetStringSlice("collector.drives")
 	cfg.Tests = Tests{
 		Short: optionalString(v.GetString("collector.tests.short")),
@@ -174,6 +203,7 @@ func ApplyFlagOverrides(cfg *Config, flags *pflag.FlagSet) {
 	}
 	if flags.Changed("retention") {
 		cfg.Retention, _ = flags.GetDuration("retention")
+		cfg.RawRetention, cfg.HourlyRetention, cfg.DailyRetention = cfg.Retention, cfg.Retention, cfg.Retention
 	}
 	if flags.Changed("web-listen") {
 		cfg.WebListen, _ = flags.GetString("web-listen")
@@ -198,6 +228,19 @@ func (c *Config) Validate() error {
 	}
 	if c.Retention < 0 {
 		return fmt.Errorf("storage.retention must not be negative")
+	}
+	if c.RawRetention < 0 || c.HourlyRetention < 0 || c.DailyRetention < 0 {
+		return fmt.Errorf("storage tier retentions must not be negative")
+	}
+	previous := time.Duration(0)
+	for _, retention := range []time.Duration{c.RawRetention, c.HourlyRetention, c.DailyRetention} {
+		if retention == 0 {
+			continue
+		}
+		if previous > retention {
+			return fmt.Errorf("enabled storage tier retentions must be ordered raw <= hourly <= daily")
+		}
+		previous = retention
 	}
 	if c.WebListen == "" {
 		return fmt.Errorf("web listen address is required")

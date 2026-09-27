@@ -112,7 +112,7 @@ describe('DriveDetail', () => {
 
     expect(driveMock).toHaveBeenCalledWith('42')
     expect(attributesMock).toHaveBeenCalledWith('42')
-    expect(historyMock).toHaveBeenCalledWith('42')
+    expect(historyMock).toHaveBeenCalledWith('42', '30d')
     expect(testsMock).toHaveBeenCalledWith('42', 1, 10)
     expect(connectMock).toHaveBeenCalledTimes(1)
 
@@ -132,6 +132,25 @@ describe('DriveDetail', () => {
     expect(text).toContain('Temperature History')
     expect(text).not.toContain('No SMART test runs recorded.')
 
+    wrapper.unmount()
+  })
+
+  it('loads selected history ranges and shows the selected resolution', async () => {
+    driveMock.mockResolvedValue({ id: 42, device: '/dev/sda', model: 'Drive', health: 'GREEN' })
+    attributesMock.mockResolvedValue([])
+    historyMock.mockResolvedValue({ points: [{ temperature: 42 }], resolution: 'hourly' })
+    testsMock.mockResolvedValue({ items: [], page: 1, total: 0 })
+
+    const wrapper = mountDriveDetail()
+    await flushPromises()
+    const group = wrapper.get('[role="group"][aria-label="History range"]')
+    expect(group.findAll('button')).toHaveLength(6)
+    const sevenDays = group.findAll('button').find((button) => button.text() === '7d')
+    await sevenDays.trigger('click')
+    await flushPromises()
+
+    expect(historyMock).toHaveBeenLastCalledWith('42', '7d')
+    expect(wrapper.text()).toContain('hourly resolution')
     wrapper.unmount()
   })
 

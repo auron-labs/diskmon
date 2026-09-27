@@ -52,6 +52,10 @@ func (d *DuckDB) DriveHistory(ctx context.Context, id int64, limit int) ([]Histo
 	return nil, ErrCGODisabled
 }
 
+func (d *DuckDB) DriveHistoryRange(ctx context.Context, id int64, period string) (*HistoryResult, error) {
+	return nil, ErrCGODisabled
+}
+
 func (d *DuckDB) DriveAttributes(ctx context.Context, id int64) ([]AttributePoint, error) {
 	return nil, ErrCGODisabled
 }
@@ -66,6 +70,10 @@ func (d *DuckDB) MarkIncompleteSmartTestRuns(ctx context.Context, now time.Time,
 
 func (d *DuckDB) PruneSamples(ctx context.Context, retention time.Duration, now time.Time) (int64, error) {
 	return 0, ErrCGODisabled
+}
+
+func (d *DuckDB) TierMaintenance(ctx context.Context, now time.Time, policy TierPolicy) (TierMaintenanceResult, error) {
+	return TierMaintenanceResult{}, ErrCGODisabled
 }
 
 func (d *DuckDB) GetNotificationState(ctx context.Context, driveID int64, notificationName string) (*NotificationState, error) {
