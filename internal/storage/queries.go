@@ -5,7 +5,20 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
+	"time"
 )
+
+const maxHistoryPoints = 1000
+
+var historyRanges = map[string]time.Duration{
+	"24h": 24 * time.Hour,
+	"7d":  7 * 24 * time.Hour,
+	"30d": 30 * 24 * time.Hour,
+	"6m":  180 * 24 * time.Hour,
+	"1y":  365 * 24 * time.Hour,
+}
 
 func (d *DuckDB) ListDrives(ctx context.Context) ([]DriveSummary, error) {
 	rows, err := d.db.QueryContext(ctx, `
@@ -110,6 +123,93 @@ func (d *DuckDB) DriveHistory(ctx context.Context, id int64, limit int) ([]Histo
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// DriveHistoryRange merges the available storage tiers for the requested period.
+func (d *DuckDB) DriveHistoryRange(ctx context.Context, id int64, period string) (*HistoryResult, error) {
+	now := time.Now()
+	var cutoff time.Time
+	bounded := false
+	if duration, ok := historyRanges[period]; ok {
+		cutoff = now.Add(-duration)
+		bounded = true
+	} else if period != "all" {
+		return nil, fmt.Errorf("unsupported history range %q", period)
+	}
+	dateFilters := []string{"", "", ""}
+	args := []any{id, id, id}
+	if bounded {
+		dateFilters = []string{" AND collected_at >= ?", " AND bucket_end >= ?", " AND bucket_end >= ?"}
+	}
+	query := `WITH history AS (
+		SELECT collected_at, temperature AS temp_avg, temperature AS temp_max, power_on_hours, reallocated_sectors, pending_sectors, uncorrectable_sectors, wear_level, 'raw' AS resolution, 'sample' AS bucket
+		FROM smart_samples WHERE drive_id=?{{raw_filter}}
+		UNION ALL
+		SELECT bucket_start, temp_avg, temp_max, power_on_hours_last, reallocated_last, pending_last, uncorrectable_last, wear_min, 'hourly', 'hour'
+		FROM smart_hourly_rollups WHERE drive_id=?{{hourly_filter}}
+		UNION ALL
+		SELECT bucket_start, temp_avg, temp_max, power_on_hours_last, reallocated_last, pending_last, uncorrectable_last, wear_min, 'daily', 'day'
+		FROM smart_daily_rollups WHERE drive_id=?{{daily_filter}}
+	), slotted AS (
+		SELECT *, row_number() OVER (ORDER BY collected_at, resolution) AS point_number,
+		       ntile(499) OVER (ORDER BY collected_at, resolution) AS time_slice,
+		       count(*) OVER () AS point_count
+		FROM history
+	), numbered AS (
+		SELECT *, row_number() OVER (PARTITION BY time_slice ORDER BY collected_at, resolution) AS slice_first,
+		       row_number() OVER (PARTITION BY time_slice ORDER BY temp_max DESC NULLS LAST, collected_at, resolution) AS slice_peak
+		FROM slotted
+	), sampled AS (
+		SELECT * FROM numbered
+		WHERE slice_first=1 OR slice_peak=1 OR point_number=point_count
+	)
+	SELECT collected_at, temp_avg, temp_max, power_on_hours, reallocated_sectors, pending_sectors,
+	       uncorrectable_sectors, wear_level, resolution, bucket
+	FROM sampled ORDER BY collected_at DESC, resolution LIMIT ?`
+	query = strings.NewReplacer("{{raw_filter}}", dateFilters[0], "{{hourly_filter}}", dateFilters[1], "{{daily_filter}}", dateFilters[2]).Replace(query)
+	if bounded {
+		args = []any{id, cutoff, id, cutoff, id, cutoff}
+	}
+	args = append(args, maxHistoryPoints)
+	rows, err := d.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	points := make([]RangeHistoryPoint, 0)
+	resolutions := map[string]bool{}
+	for rows.Next() {
+		var p RangeHistoryPoint
+		var avg, max sql.NullFloat64
+		if err := rows.Scan(&p.CollectedAt, &avg, &max, &p.PowerOnHours, &p.ReallocatedSectors, &p.PendingSectors, &p.UncorrectableSectors, &p.WearLevel, &p.Resolution, &p.Bucket); err != nil {
+			return nil, err
+		}
+		p.Temperature = historyTemperature(avg)
+		p.TemperatureMax = historyTemperature(max)
+		points = append(points, p)
+		resolutions[p.Resolution] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	resolution := "empty"
+	if len(resolutions) == 1 {
+		for value := range resolutions {
+			resolution = value
+		}
+	} else if len(resolutions) > 1 {
+		resolution = "mixed"
+	}
+	return &HistoryResult{Points: points, Resolution: resolution}, nil
+}
+
+func historyTemperature(value sql.NullFloat64) *float64 {
+	if !value.Valid {
+		return nil
+	}
+	temperature := value.Float64
+	return &temperature
 }
 
 func (d *DuckDB) DriveAttributes(ctx context.Context, id int64) ([]AttributePoint, error) {
