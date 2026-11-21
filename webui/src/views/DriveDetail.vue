@@ -20,6 +20,8 @@ const attributesError = ref('')
 const attributesLoading = ref(false)
 const attributesUpdatedAt = ref(null)
 const history = ref([])
+const historyResolution = ref('')
+const historyRange = ref('30d')
 const historyError = ref('')
 const historyLoading = ref(false)
 const historyUpdatedAt = ref(null)
@@ -149,7 +151,9 @@ async function loadAttributes() {
 async function loadHistory() {
   historyLoading.value = true
   try {
-    history.value = await api.history(route.params.id)
+    const result = await api.history(route.params.id, historyRange.value)
+    history.value = Array.isArray(result) ? result : (result.points || [])
+    historyResolution.value = Array.isArray(result) ? '' : result.resolution || ''
     historyError.value = ''
     historyUpdatedAt.value = new Date()
   } catch (err) {
@@ -157,6 +161,12 @@ async function loadHistory() {
   } finally {
     historyLoading.value = false
   }
+}
+
+async function selectHistoryRange(range) {
+  if (historyRange.value === range) return
+  historyRange.value = range
+  await loadHistory()
 }
 
 async function loadDriveSnapshot(showLoading = false) {
@@ -352,6 +362,19 @@ onUnmounted(() => {
         <div class="flex flex-wrap items-center justify-between gap-3">
           <p class="mono text-2xs uppercase tracking-wider text-[var(--text-tertiary)]">Temperature History</p>
           <span class="mono text-2xs text-[var(--text-tertiary)]">{{ sectionMeta('History', historyUpdatedLabel) }}</span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2" role="group" aria-label="History range">
+          <button
+            v-for="range in ['24h', '7d', '30d', '6m', '1y', 'all']"
+            :key="range"
+            type="button"
+            class="mono rounded-md border px-2 py-1 text-2xs uppercase tracking-wider transition-colors"
+            :class="historyRange === range ? 'border-accent/50 bg-accent/10 text-accent' : 'border-edge text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'"
+            :aria-pressed="historyRange === range"
+            :disabled="historyLoading"
+            @click="selectHistoryRange(range)"
+          >{{ range }}</button>
+          <span v-if="historyResolution" class="mono text-2xs text-[var(--text-tertiary)]">{{ historyResolution }} resolution</span>
         </div>
         <div v-if="historyError" class="rounded-xl border border-danger/40 bg-danger/5 p-4">
           <div class="flex flex-wrap items-center justify-between gap-3">

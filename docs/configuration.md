@@ -33,6 +33,9 @@ Because `--db` is a flag, it overrides the `database` value in `/etc/diskmon/con
 | --- | --- | --- | --- | --- | --- |
 | Database path | `database` | `DISKMON_DATABASE` | `--db` | `diskmon.duckdb` | Required after config merge. |
 | Collection interval | `collector.interval` | `DISKMON_INTERVAL` | `--interval` | `60s` | Go duration syntax, must be greater than zero. |
+| Raw sample retention | `storage.raw_retention` | `DISKMON_RAW_RETENTION` | none | `672h` | Raw samples are rolled up after 4 weeks. |
+| Hourly rollup retention | `storage.hourly_retention` | `DISKMON_HOURLY_RETENTION` | none | `4320h` | Hourly rows are rolled up after 6 months. |
+| Daily rollup retention | `storage.daily_retention` | `DISKMON_DAILY_RETENTION` | none | `43800h` | Daily rows are deleted after 5 years. |
 | Drive list | `collector.drives` | `DISKMON_DRIVES` | `--drives` | `[]` | Empty list enables auto-discovery. Env/flag values may be comma-separated. |
 | Short SMART self-test schedule | `collector.tests.short` | `DISKMON_TEST_SHORT` | none | empty | Optional cron expression. |
 | Long SMART self-test schedule | `collector.tests.long` | `DISKMON_TEST_LONG` | none | empty | Optional cron expression. |
@@ -40,12 +43,19 @@ Because `--db` is a flag, it overrides the `database` value in `/etc/diskmon/con
 | Log level | `log.level` | `DISKMON_LOG_LEVEL` | `--log-level` | `INFO` | Accepted values: `DEBUG`, `INFO`, `WARN`, `ERROR`. |
 | Notifications | `notifications` | `DISKMON_NOTIFICATIONS` | none | `[]` | Optional array. Env value may be JSON or YAML. |
 
+The daemon runs one bounded tier-maintenance pass at startup and hourly. Set any individual tier retention to `0s` to disable only that tier; setting all three to `0s` disables maintenance. Positive tier retentions must remain ordered raw <= hourly <= daily, ignoring disabled tiers. The legacy `storage.retention` / `DISKMON_RETENTION` setting and `--retention` flag set all three tiers to the same duration (so legacy `0s` disables all tiers); explicit legacy settings override tier-specific YAML values, while environment variables and flags retain their normal higher precedence.
+
 `--config` is also a persistent flag, but it selects the config file rather than configuring a runtime setting.
 
 ## YAML Example
 
 ```yaml
 database: /var/lib/diskmon/diskmon.duckdb
+
+storage:
+  raw_retention: 672h
+  hourly_retention: 4320h
+  daily_retention: 43800h
 
 collector:
   interval: 5m

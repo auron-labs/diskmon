@@ -1,5 +1,13 @@
 database: /var/lib/diskmon/diskmon.duckdb
 
+# Tier maintenance starts with these defaults even when omitted. On upgrade,
+# eligible old data will be rolled up/deleted at startup and hourly. Set a tier
+# to 0s to disable it (all three 0s disables maintenance).
+# storage:
+#   raw_retention: 672h       # 28 days
+#   hourly_retention: 4320h   # 180 days
+#   daily_retention: 43800h   # 5 years
+
 collector:
   interval: 60s
   drives: []

@@ -27,6 +27,27 @@ CREATE TABLE IF NOT EXISTS smart_samples (
 
 CREATE SEQUENCE IF NOT EXISTS seq_samples START 1;
 
+CREATE TABLE IF NOT EXISTS smart_hourly_rollups (
+    drive_id BIGINT NOT NULL, bucket_start TIMESTAMP NOT NULL, bucket_end TIMESTAMP NOT NULL,
+    sample_count BIGINT NOT NULL, temp_count BIGINT NOT NULL, temp_min DOUBLE, temp_max DOUBLE, temp_avg DOUBLE, temp_last INTEGER,
+    power_on_hours_last BIGINT, reallocated_max BIGINT, reallocated_last BIGINT,
+    pending_max BIGINT, pending_last BIGINT, uncorrectable_max BIGINT, uncorrectable_last BIGINT,
+    wear_min BIGINT, wear_last BIGINT, health_status TEXT, health_score INTEGER,
+    last_sample_at TIMESTAMP NOT NULL, last_sample_id BIGINT NOT NULL,
+    PRIMARY KEY (drive_id, bucket_start)
+);
+CREATE TABLE IF NOT EXISTS smart_daily_rollups (
+    drive_id BIGINT NOT NULL, bucket_start TIMESTAMP NOT NULL, bucket_end TIMESTAMP NOT NULL,
+    sample_count BIGINT NOT NULL, temp_count BIGINT NOT NULL, temp_min DOUBLE, temp_max DOUBLE, temp_avg DOUBLE, temp_last INTEGER,
+    power_on_hours_last BIGINT, reallocated_max BIGINT, reallocated_last BIGINT,
+    pending_max BIGINT, pending_last BIGINT, uncorrectable_max BIGINT, uncorrectable_last BIGINT,
+    wear_min BIGINT, wear_last BIGINT, health_status TEXT, health_score INTEGER,
+    last_sample_at TIMESTAMP NOT NULL, last_sample_id BIGINT NOT NULL,
+    PRIMARY KEY (drive_id, bucket_start)
+);
+CREATE TABLE IF NOT EXISTS smart_rollup_pending_samples (sample_id BIGINT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS smart_prune_pending_samples (sample_id BIGINT PRIMARY KEY);
+
 CREATE TABLE IF NOT EXISTS smart_attributes (
     sample_id BIGINT NOT NULL,
     attribute_id INTEGER NOT NULL,
