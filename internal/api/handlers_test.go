@@ -47,6 +47,10 @@ func (f fakeHandlerStore) DriveHistory(context.Context, int64, int) ([]storage.H
 	return nil, f.historyErr
 }
 
+func (f fakeHandlerStore) DriveHistoryRange(context.Context, int64, string) (*storage.HistoryResult, error) {
+	return &storage.HistoryResult{Points: []storage.RangeHistoryPoint{}, Resolution: "empty"}, f.historyErr
+}
+
 func (f fakeHandlerStore) DriveAttributes(context.Context, int64) ([]storage.AttributePoint, error) {
 	return nil, f.attrsErr
 }
@@ -678,6 +682,23 @@ func TestGetDriveNotFound(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"error":"drive not found"`) {
 		t.Fatalf("expected drive not found JSON error, got %q", rec.Body.String())
+	}
+}
+
+func TestDriveHistoryRangeReturnsMetadataAndRejectsUnknownRange(t *testing.T) {
+	h := &Handlers{db: fakeHandlerStore{}}
+	req := withRouteID(httptest.NewRequest(http.MethodGet, "/api/v1/drives/42/history?range=7d", nil), "42")
+	rec := httptest.NewRecorder()
+	h.DriveHistory(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"resolution":"empty"`) {
+		t.Fatalf("expected ranged history response, status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = withRouteID(httptest.NewRequest(http.MethodGet, "/api/v1/drives/42/history?range=bad", nil), "42")
+	rec = httptest.NewRecorder()
+	h.DriveHistory(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown range, got %d", rec.Code)
 	}
 }
 

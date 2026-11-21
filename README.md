@@ -155,6 +155,17 @@ Validate config before restarting a service:
 diskmon config validate --config /etc/diskmon/config.yaml
 ```
 
+### Offline database pruning and compaction
+
+Pruning applies the configured tier-retention policy and drains the bounded maintenance backlog. Defaults are 672h (28 days) of raw samples, 4320h (180 days) of hourly rollups, and 43800h (5 years) of daily rollups.
+
+```bash
+diskmon --config /etc/diskmon/config.yaml database prune --dry-run
+diskmon --config /etc/diskmon/config.yaml database prune --compact
+```
+
+The dry run does not prune and reports eligible-row counts as estimates capped by the maintenance query limits (1000 per bucket); `--dry-run` and `--compact` cannot be combined. Setting an individual tier retention to `0` disables that tier. A real prune requires at least one enabled tier, but `--compact` can be used with all tiers disabled to compact without pruning. Stop the daemon before running either command and create an independent backup before maintenance; `--db` can override the configured database path. Compaction is offline: it writes and verifies a sibling copy (tables, row counts, schemas, indexes, and sequences), then atomically replaces the database file using POSIX rename semantics on Linux/macOS. The original stays in place until that atomic replacement, so pre-replacement failures leave it untouched; a directory-sync failure after replacement is reported and requires checking the installed file. Compaction does not keep an internal backup, so the independent backup is essential. Keep enough free space for a full replacement copy alongside the current database (approximately one database-size of additional space; actual size varies), plus space for your independent backup if stored on the same volume.
+
 ## Security and exposure
 
 By default, use diskmon as a local-only UI on `http://127.0.0.1:8976`.
@@ -182,11 +193,16 @@ Configuration precedence is: flags > environment variables > YAML config > defau
 - `DISKMON_DATABASE` (default: `diskmon.duckdb`)
 - `DISKMON_WEB_LISTEN` (default local URL: `http://127.0.0.1:8976`; expose with care)
 - `DISKMON_INTERVAL` (default: `60s`)
+- `DISKMON_RAW_RETENTION` (default: `672h`, 28 days)
+- `DISKMON_HOURLY_RETENTION` (default: `4320h`, 180 days)
+- `DISKMON_DAILY_RETENTION` (default: `43800h`, 5 years)
 - `DISKMON_DRIVES` (comma-separated list such as `/dev/sda,/dev/nvme0n1`)
 - `DISKMON_TEST_SHORT` (optional cron expression, e.g. `0 2 * * *`)
 - `DISKMON_TEST_LONG` (optional cron expression, e.g. `0 3 * * 0`)
 - `DISKMON_LOG_LEVEL` (for example `INFO` or `DEBUG`)
 - `DISKMON_NOTIFICATIONS` (JSON array; see notification caveats below)
+
+Each tier can be disabled individually with `0s`; set all three to `0s` to disable tier maintenance. **Upgrade note:** omitted settings now use these defaults, so upgrading can automatically roll up or delete eligible old data at daemon startup and hourly. Set the relevant tier(s) to `0s` before upgrading/restarting if you need to prevent that cleanup.
 
 Example:
 
@@ -203,6 +219,11 @@ diskmon daemon
 
 ```yaml
 database: /var/lib/diskmon/diskmon.duckdb
+
+storage:
+  raw_retention: 672h       # Raw samples: 28 days
+  hourly_retention: 4320h   # Hourly rollups: 180 days
+  daily_retention: 43800h   # Daily rollups: 5 years
 
 collector:
   interval: 5m
