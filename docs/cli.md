@@ -11,6 +11,7 @@ These persistent flags apply to every command:
 | `--config` | empty | Path to config YAML. |
 | `--db` | `diskmon.duckdb` | DuckDB database path. |
 | `--interval` | `60s` | Collection interval for the daemon. |
+| `--retention` | `0s` | Legacy option that applies one duration to all storage tiers. Zero disables all tiers. |
 | `--web-listen` | `127.0.0.1:8976` | HTTP listen address for API and web UI. |
 | `--drives` | empty | Comma-separated device list. |
 | `--log-level` | `INFO` | `DEBUG`, `INFO`, `WARN`, or `ERROR`. |
@@ -33,8 +34,9 @@ Startup behavior:
 4. Marks stale in-progress SMART test runs as incomplete.
 5. Starts the API and embedded web UI server.
 6. Runs an immediate collection cycle.
-7. Repeats collection on `collector.interval`.
-8. Starts scheduled short/long SMART tests when configured.
+7. Runs one bounded storage-tier maintenance pass, then repeats it hourly.
+8. Repeats collection on `collector.interval`.
+9. Starts scheduled short/long SMART tests when configured.
 
 Common example:
 

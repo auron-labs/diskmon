@@ -36,8 +36,10 @@ async function req(path) {
 export const api = {
   drives: () => req('/drives'),
   drive: (id) => req(`/drives/${id}`),
-  history: (id, limit) => {
-    const params = limit ? `?limit=${limit}` : ''
+  history: (id, rangeOrLimit) => {
+    const params = typeof rangeOrLimit === 'string'
+      ? `?range=${encodeURIComponent(rangeOrLimit)}`
+      : rangeOrLimit ? `?limit=${rangeOrLimit}` : ''
     return req(`/drives/${id}/history${params}`)
   },
   attributes: (id) => req(`/drives/${id}/attributes`),
