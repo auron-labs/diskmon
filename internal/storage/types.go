@@ -16,6 +16,29 @@ const (
 	SmartTestStatusIncomplete = "INCOMPLETE"
 )
 
+// TierPolicy defines age boundaries and the maximum rows processed per bucket.
+type TierPolicy struct {
+	RawRetention        time.Duration
+	HourlyRetention     time.Duration
+	DailyRetention      time.Duration
+	MaxSamplesPerBucket int
+	DryRun              bool
+}
+
+// TierMaintenanceResult reports this pass's work and outstanding eligible rows.
+type TierMaintenanceResult struct {
+	RawSamplesRolled int64
+	HourlyRowsRolled int64
+	DailyRowsDeleted int64
+	// PendingSamplesDeleted counts physical sample rows removed while replaying journals.
+	PendingSamplesDeleted int64
+	// PendingRowsRemaining is a bounded count across both pending-delete journals.
+	PendingRowsRemaining int64
+	RawSamplesRemaining  int64
+	HourlyRowsRemaining  int64
+	DailyRowsRemaining   int64
+}
+
 func IsTerminalSmartTestStatus(status string) bool {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
 	case SmartTestStatusFailed,
@@ -64,6 +87,28 @@ type DriveDetail struct {
 type HistoryPoint struct {
 	CollectedAt          time.Time `json:"collected_at"`
 	Temperature          *int      `json:"temperature"`
+	TemperatureMax       *int      `json:"temperature_max,omitempty"`
+	Resolution           string    `json:"resolution,omitempty"`
+	Bucket               string    `json:"bucket,omitempty"`
+	PowerOnHours         *int64    `json:"power_on_hours"`
+	ReallocatedSectors   *int64    `json:"reallocated_sectors"`
+	PendingSectors       *int64    `json:"pending_sectors"`
+	UncorrectableSectors *int64    `json:"uncorrectable_sectors"`
+	WearLevel            *int64    `json:"wear_level"`
+}
+
+type HistoryResult struct {
+	Points     []RangeHistoryPoint `json:"points"`
+	Resolution string              `json:"resolution"`
+}
+
+// RangeHistoryPoint preserves rollup averages' fractional temperature precision.
+type RangeHistoryPoint struct {
+	CollectedAt          time.Time `json:"collected_at"`
+	Temperature          *float64  `json:"temperature"`
+	TemperatureMax       *float64  `json:"temperature_max,omitempty"`
+	Resolution           string    `json:"resolution"`
+	Bucket               string    `json:"bucket"`
 	PowerOnHours         *int64    `json:"power_on_hours"`
 	ReallocatedSectors   *int64    `json:"reallocated_sectors"`
 	PendingSectors       *int64    `json:"pending_sectors"`
