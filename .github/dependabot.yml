@@ -1,61 +1,37 @@
 version: 2
+
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(deps)
+    target-branch: main
 updates:
   - package-ecosystem: github-actions
     directory: /.github/workflows
-    target-branch: main
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore(deps)
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     labels:
       - dependencies
-    groups:
-      github-actions-minor-patch:
-        update-types:
-          - minor
-          - patch
 
   - package-ecosystem: gomod
     directory: /
-    target-branch: main
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore(deps)
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     labels:
       - dependencies
-    groups:
-      gomod-minor-patch:
-        update-types:
-          - minor
-          - patch
 
   - package-ecosystem: npm
     directory: /webui
-    target-branch: main
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore(deps)
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     labels:
       - dependencies
-    groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
 
   - package-ecosystem: docker
     directory: /
-    target-branch: main
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore(deps)
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     labels:
       - dependencies
-    groups:
-      docker-minor-patch:
-        update-types:
-          - minor
-          - patch
