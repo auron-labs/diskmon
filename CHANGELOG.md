@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/auron-labs/diskmon/compare/v0.6.1...v0.7.0) (2026-11-23)
+
+
+### Features
+
+* add retention strategy ([b86f93b](https://github.com/auron-labs/diskmon/commit/b86f93bcd00100df38b66da84e452cbe3a38194c))
+
+
+### Bug Fixes
+
+* **webui:** refresh lockfile to clear bun audit advisories ([cb9bfb2](https://github.com/auron-labs/diskmon/commit/cb9bfb2cd7bed53628ee73301b69dada7313f4f6))
+
 ## [0.6.1](https://github.com/auron-labs/diskmon/compare/v0.6.0...v0.6.1) (2026-08-15)
 
 
